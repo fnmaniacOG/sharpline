@@ -1,0 +1,22 @@
+{
+  "name": "sharpline",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Autonomous World Cup trading agent (TxODDS hackathon, Trading Tools and Agents track)",
+  "scripts": {
+    "activate": "ts-node auth/activate.ts",
+    "log": "ts-node onchain/log.ts"
+  },
+  "dependencies": {
+    "@coral-xyz/anchor": "^0.30.1",
+    "@solana/spl-token": "^0.4.6",
+    "@solana/web3.js": "^1.95.3",
+    "axios": "^1.7.7",
+    "tweetnacl": "^1.0.3"
+  },
+  "devDependencies": {
+    "@types/node": "^20.14.0",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.5.4"
+  }
+}

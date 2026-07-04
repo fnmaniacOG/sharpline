@@ -1,0 +1,20 @@
+# secrets - never commit these
+.env
+wallet.json
+*.key
+
+# learned state (accumulates locally from --calibrate runs)
+agent/elo_overrides.json
+
+# on-chain logging bookkeeping and decision stream
+onchain/logged.jsonl
+agent/decisions.jsonl
+
+# macOS
+.DS_Store
+
+# deps and build
+node_modules/
+__pycache__/
+*.pyc
+.venv/

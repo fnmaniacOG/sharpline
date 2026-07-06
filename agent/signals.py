@@ -43,8 +43,10 @@ def make_signal(outcome: str, priced: dict, move: float, sharp: bool) -> dict:
     edge = priced["edge"]                  # model_p - market_true_p
     direction = "BACK" if edge > 0 else ("LAY" if edge < 0 else "NONE")
 
-    # base confidence from edge size (10 prob points of edge -> ~full confidence)
-    conf = min(abs(edge) / 0.10, 1.0)
+    # base confidence from edge size, aligned to the 3% edge floor: a 3-point edge maps to
+    # ~0.5 confidence (the bet floor), 6 points to full confidence. So clearing the edge floor
+    # is enough to act on a static line; sharp moves below then confirm or damp it.
+    conf = min(abs(edge) / 0.06, 1.0)
 
     # sharp money confirms or contradicts:
     #  - line moving toward the outcome we want to BACK confirms it (boost)

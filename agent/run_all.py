@@ -36,6 +36,25 @@ def rel_when(start, now) -> str:
     return f"in {int(round(h))}h"
 
 
+CACHE = "dashboard/panels_cache.json"   # last-known per-fixture panels (survives restarts)
+
+
+def load_panels() -> dict:
+    try:
+        with open(CACHE) as f:
+            return json.load(f)
+    except (OSError, ValueError):
+        return {}
+
+
+def save_panels(panels: dict) -> None:
+    try:
+        with open(CACHE, "w") as f:
+            json.dump(panels, f)
+    except OSError:
+        pass
+
+
 def log_decision(path: str, rec: dict) -> None:
     with open(path, "a") as f:
         f.write(json.dumps(rec, separators=(",", ":")) + "\n")
@@ -85,7 +104,11 @@ def main():
     all_fixtures = client.fixtures()
 
     models, calibrated, settled = {}, set(), set()
-    panels, logs = {}, []
+    panels, logs = load_panels(), []          # restore last-known slate so restarts don't blank it
+    for _p in panels.values():                # a fresh agent holds nothing yet; neutralize stale bets
+        if _p.get("decision") == "BET":
+            _p.update({"decision": "PASS", "out": None, "stake": "—", "odds_taken": None,
+                       "reason": "re-pricing after restart"})
     wins = losses = 0
 
     print(f"monitoring the slate ({len(all_fixtures)} fixtures known)\n")
@@ -173,6 +196,7 @@ def main():
                               "model": None, "odds": None, "decision": "WAIT", "out": None,
                               "stake": "—", "odds_taken": None,
                               "reason": "waiting for the market to price this fixture", "checks": []})
+        save_panels(panels)   # remember the slate for the next run
         if args.dashboard and (spot or watch):
             write_state(args.dashboard, spot or {"home": "—", "away": "—", "phase": "scanning",
                         "score": "0 - 0", "model": None, "odds": None, "decision": "PASS",

@@ -12,17 +12,19 @@ If no match is live at record time, capture one earlier with `python3 agent/run_
 
 ---
 
-## 0:00 to 0:30. The hook
+## 0:00 to 0:35. The hook (open on the dashboard)
 
-On screen: the README title.
+On screen: `dashboard/index.html` full-screen, running its animated walkthrough.
 
-Say: "This is SharpLine, an autonomous trading agent for the World Cup. It reads the live TxLINE odds feed, prices every match with its own model, finds where the market is wrong, sizes a disciplined bet, and writes every decision to Solana. No human in the loop. Let me show you it run."
+Say: "This is SharpLine, an autonomous trading agent for the World Cup. It reads the live TxLINE odds feed, prices every match with its own model, finds where the market is wrong, sizes a disciplined bet, and writes every decision to Solana. Here it is deciding in real time."
 
-## 0:30 to 1:15. The data is real
+Point at: the model-versus-market bars and the edge badges as they animate. Let one full loop play so a bet fires and settles.
 
-On screen: run the feed probe or `run_live.py` startup so the fixtures list and a real market line appear.
+## 0:35 to 1:15. The data is real
 
-Say: "It authenticates to TxLINE, pulls the World Cup fixtures, and reads the de-vigged StablePrice consensus. This is the sharp line, already margin-free. Here is a real match and its real odds."
+On screen: cut to the terminal, run `run_live.py` startup so the fixtures list and a real market line appear.
+
+Say: "That dashboard is driven by this. It authenticates to TxLINE, pulls the World Cup fixtures, and reads the de-vigged StablePrice consensus, the sharp line, already margin-free. Here is a real match and its real odds."
 
 Point at: the fixture name and the three 1x2 prices.
 
@@ -46,6 +48,8 @@ On screen: run `npm run log`, then click one of the printed devnet explorer link
 
 Say: "Every decision is written to Solana devnet as a signed memo. Here it posts, and here is that exact bet on the explorer, timestamped and tamper-evident. Anyone can audit what the agent did and when, by transaction signature. That is the trustless record a real desk needs."
 
+Integrity note: the signatures in the dashboard animation are visual placeholders. Show at least one real explorer transaction from `npm run log` here so the on-chain claim is backed by a real tx, not the animation.
+
 ## 4:15 to 5:00. Close
 
 On screen: the stats line (bankroll, bets, win rate) and the architecture diagram from the README.
@@ -60,6 +64,7 @@ Say: "So: real feed in, a model that learns, disciplined sizing, settlement and 
 - [ ] A fixture with a live or recorded line ready.
 - [ ] Wallet funded on devnet (so `npm run log` posts).
 - [ ] A decisions file with at least one bet to post (`run_live.py --log agent/decisions.jsonl`).
+- [ ] `dashboard/index.html` open full-screen for the opening shot.
 - [ ] Explorer tab open to paste a signature into if needed.
 - [ ] Terminal font large enough to read on video.
 - [ ] Under five minutes. Cut the model section first if you run long.

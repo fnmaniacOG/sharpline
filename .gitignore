@@ -10,6 +10,9 @@ agent/elo_overrides.json
 onchain/logged.jsonl
 agent/decisions.jsonl
 
+# dashboard runtime state
+dashboard/state.json
+
 # macOS
 .DS_Store
 

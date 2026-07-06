@@ -52,6 +52,34 @@ def log_decision(path: str, rec: dict) -> None:
         f.write(json.dumps(rec, separators=(",", ":")) + "\n")
 
 
+ORDER = ("HOME", "DRAW", "AWAY")
+
+
+def write_state(path: str, fx: dict, anchored: dict, odds: dict, phase: str, score: str,
+                decision: dict | None, agent, logs: list) -> None:
+    """Write the current agent state as JSON for the dashboard's live mode."""
+    import json
+    st = agent.stats()
+    checks = []
+    if decision:
+        checks = [[f"edge {decision['edge']:.1%}", "ok"], [f"conf {decision['confidence']:.2f}", "ok"],
+                  ["odds in band", "ok"], ["one per market", "ok"]]
+    state = {
+        "home": fx["p1"], "away": fx["p2"], "phase": phase, "score": score,
+        "model": [round(anchored.get(k, 0), 3) for k in ORDER],
+        "odds": [round(odds.get(k, 0), 2) for k in ORDER],
+        "decision": "BET" if decision else "PASS",
+        "out": decision["outcome"] if decision else None,
+        "stake": decision["stake"] if decision else None,
+        "odds_taken": decision["decimal"] if decision else None,
+        "reason": decision["reason"] if decision else "no qualifying edge — standing down",
+        "bankroll": st["bankroll"], "pnl": st["realizedPnL"], "checks": checks,
+        "logs": logs[-4:],
+    }
+    with open(path, "w") as f:
+        json.dump(state, f)
+
+
 def diagnose(client: TxLineClient) -> None:
     """When nothing has 1x2 odds, show what the feed actually has right now."""
     import time
@@ -90,6 +118,8 @@ def main():
                     help="calibration rate per fixture (0.10 = move 10%% toward the market gap)")
     ap.add_argument("--log", default=None,
                     help="append bets and settlements to this JSONL for the on-chain logger")
+    ap.add_argument("--dashboard", default=None,
+                    help="write live agent state to this JSON for the dashboard (e.g. dashboard/state.json)")
     args = ap.parse_args()
 
     client = TxLineClient()
@@ -109,6 +139,11 @@ def main():
 
     last_ts = None
     calibrated = False
+    cur_phase, cur_score = "pre-match", "0 - 0"
+    last_decision = None
+    last_odds: dict = {}
+    last_anchored: dict = {}
+    dash_logs: list = []
     for i in range(1 if args.once else args.max_iters):
         if args.record:                        # bank raw records for demo replay
             import json as _json
@@ -145,16 +180,24 @@ def main():
                           f"{fx['p2']} {rep[fx['p2']][0]}->{rep[fx['p2']][1]}")
                 # anchor the Elo model to THIS de-vigged line, then look for an edge
                 anchored = anchor_to_market(model_raw, market_p, args.model_weight)
+                last_anchored, last_odds = anchored, snap.outcomes
                 mkt = "  ".join(f"{k} {v:.2f}" for k, v in snap.outcomes.items())
                 print(f"[{i}] market {mkt}")
                 for d in agent.process(to_agent_update(snap, anchored)):
                     print(f"     -> BET {d['outcome']} ${d['stake']} @ {d['decimal']:.2f} "
                           f"(edge {d['edge']:.1%}, conf {d['confidence']:.2f}) | {d['reason']}")
+                    last_decision = d
+                    dash_logs.append({"kind": "BET",
+                                      "desc": f"{d['outcome']} ${d['stake']} @ {d['decimal']:.2f} "
+                                              f"(edge {d['edge']:.1%})"})
                     if args.log:
                         log_decision(args.log, {"t": snap.ts, "type": "BET", "fixture": fid,
                                                 "outcome": d["outcome"], "stake": d["stake"],
                                                 "odds": d["decimal"], "edge": round(d["edge"], 4),
                                                 "conf": round(d["confidence"], 3)})
+                if args.dashboard:
+                    write_state(args.dashboard, fx, anchored, snap.outcomes,
+                                cur_phase, cur_score, last_decision, agent, dash_logs)
 
         try:
             scores = client.scores_snapshot(fid)
@@ -162,14 +205,19 @@ def main():
             scores = []
         if scores:
             sc = scores[-1]
+            cur_phase, cur_score = sc.phase, f"{sc.home} - {sc.away}"
             print(f"[{i}] {sc.phase}  {fx['p1']} {sc.home} - {sc.away} {fx['p2']}")
             if sc.ended:
                 result = winning_outcome(sc)
                 pnl = agent.settle(fid, result)
                 print(f"\nFULL TIME. settled P&L: {pnl:+.2f}")
+                dash_logs.append({"kind": "SETTLE", "desc": f"{result} · P&L {pnl:+.2f}"})
                 if args.log:
                     log_decision(args.log, {"t": sc.ts, "type": "SETTLE", "fixture": fid,
                                             "result": result, "pnl": pnl})
+                if args.dashboard:
+                    write_state(args.dashboard, fx, last_anchored, last_odds, cur_phase,
+                                cur_score, last_decision, agent, dash_logs)
                 break
 
         if args.once:

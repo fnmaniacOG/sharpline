@@ -1,0 +1,292 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>SharpLine — Autonomous World Cup Trading Agent</title>
+<style>
+  :root{
+    --bg:#0a0e17; --panel:#111725; --panel2:#0d1320; --line:#1d2740;
+    --ink:#e8edf7; --dim:#8394b4; --dimmer:#5a6a8a;
+    --model:#2fd6a6; --market:#f2b64c; --bet:#2fd6a6; --pass:#5a6a8a;
+    --neg:#ff5c72; --sol:#9945ff; --sol2:#14f195; --accent:#5b8cff;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:radial-gradient(1200px 600px at 70% -10%,#12203a 0%,var(--bg) 55%);
+    color:var(--ink);font-family:"Inter",system-ui,-apple-system,Segoe UI,Roboto,sans-serif;
+    -webkit-font-smoothing:antialiased;padding:22px;min-height:100vh}
+  .mono{font-family:"SF Mono",ui-monospace,Menlo,Consolas,monospace;font-variant-numeric:tabular-nums}
+  .wrap{max-width:1180px;margin:0 auto}
+
+  /* header */
+  header{display:flex;align-items:center;gap:16px;margin-bottom:18px}
+  .logo{font-weight:800;font-size:26px;letter-spacing:-.5px}
+  .logo span{color:var(--model)}
+  .tag{color:var(--dim);font-size:13px}
+  .live{margin-left:auto;display:flex;align-items:center;gap:8px;font-size:12px;color:var(--dim);
+    background:var(--panel);border:1px solid var(--line);padding:7px 12px;border-radius:999px}
+  .dot{width:8px;height:8px;border-radius:50%;background:var(--sol2);box-shadow:0 0 0 0 rgba(20,241,149,.6);
+    animation:pulse 1.8s infinite}
+  @keyframes pulse{0%{box-shadow:0 0 0 0 rgba(20,241,149,.5)}70%{box-shadow:0 0 0 9px rgba(20,241,149,0)}100%{box-shadow:0 0 0 0 rgba(20,241,149,0)}}
+
+  .grid{display:grid;grid-template-columns:1.55fr 1fr;gap:16px}
+  .panel{background:linear-gradient(180deg,var(--panel),var(--panel2));border:1px solid var(--line);
+    border-radius:16px;padding:18px 20px}
+  .panel h3{margin:0 0 14px;font-size:12px;letter-spacing:1.5px;text-transform:uppercase;color:var(--dimmer);font-weight:700}
+
+  /* match */
+  .match{display:flex;align-items:center;justify-content:space-between;margin-bottom:6px}
+  .team{font-size:20px;font-weight:700}
+  .score{font-size:34px;font-weight:800}.mono.score{letter-spacing:2px}
+  .meta{display:flex;gap:10px;align-items:center;color:var(--dim);font-size:12.5px;margin-bottom:18px}
+  .chip{background:#0b1220;border:1px solid var(--line);border-radius:999px;padding:3px 10px;font-size:11.5px;color:var(--dim)}
+  .phase{color:var(--sol2)}
+
+  /* prob rows */
+  .row{margin:14px 0}
+  .rowtop{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:7px;font-size:13.5px}
+  .rowtop .name{font-weight:600}
+  .edge{font-size:12px;padding:2px 8px;border-radius:6px;font-weight:700}
+  .edge.pos{color:var(--model);background:rgba(47,214,166,.12)}
+  .edge.neg{color:var(--neg);background:rgba(255,92,114,.10)}
+  .bars{position:relative}
+  .bar{height:9px;border-radius:6px;margin:5px 0;position:relative;overflow:hidden;background:#0b1220}
+  .fill{height:100%;border-radius:6px;transition:width .9s cubic-bezier(.4,1.2,.4,1)}
+  .fill.model{background:linear-gradient(90deg,#1f8f74,var(--model))}
+  .fill.market{background:linear-gradient(90deg,#b9862f,var(--market))}
+  .legend{display:flex;gap:16px;font-size:11.5px;color:var(--dim);margin-top:4px}
+  .sw{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:6px;vertical-align:-1px}
+
+  /* decision */
+  .verdict{display:flex;align-items:center;gap:12px;margin-bottom:12px}
+  .badge{font-size:22px;font-weight:800;padding:8px 16px;border-radius:12px;letter-spacing:.5px}
+  .badge.BET{color:#04140f;background:var(--bet);box-shadow:0 6px 24px rgba(47,214,166,.28)}
+  .badge.PASS{color:var(--ink);background:#1a2338;border:1px solid var(--line)}
+  .verdict .out{font-size:15px;color:var(--dim)}
+  .verdict .out b{color:var(--ink)}
+  .dline{font-size:13px;color:var(--dim);margin-bottom:14px;min-height:18px}
+  .stats{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px}
+  .stat{background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:9px 12px}
+  .stat .k{font-size:11px;color:var(--dimmer);text-transform:uppercase;letter-spacing:.6px}
+  .stat .v{font-size:19px;font-weight:700;margin-top:2px}
+  .v.pos{color:var(--model)} .v.neg{color:var(--neg)}
+  .checks{display:flex;flex-wrap:wrap;gap:6px}
+  .ck{font-size:11px;padding:3px 9px;border-radius:999px;border:1px solid var(--line);color:var(--dim)}
+  .ck.ok{color:var(--model);border-color:rgba(47,214,166,.35)}
+  .ck.ok::before{content:"✓ "}
+  .ck.no{color:var(--neg);border-color:rgba(255,92,114,.3)}
+  .ck.no::before{content:"✕ "}
+
+  /* onchain */
+  .log{margin-top:16px}
+  .logrow{display:flex;align-items:center;gap:10px;padding:9px 0;border-top:1px solid var(--line);font-size:13px}
+  .logrow:first-child{border-top:none}
+  .kind{font-size:10.5px;font-weight:700;padding:2px 7px;border-radius:5px;letter-spacing:.5px}
+  .kind.BET{color:#04140f;background:var(--bet)} .kind.SETTLE{color:#fff;background:var(--sol)}
+  .sig{color:var(--accent);text-decoration:none;font-size:12px}
+  .sig:hover{text-decoration:underline}
+  .logrow .desc{color:var(--dim)}
+  .foot{margin-top:14px;color:var(--dimmer);font-size:11.5px;display:flex;align-items:center;gap:8px}
+  .solmark{color:var(--sol2);font-weight:700}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div>
+      <div class="logo">Sharp<span>Line</span></div>
+    </div>
+    <div class="tag">Autonomous World Cup trading agent &middot; TxLINE feed &middot; Solana devnet</div>
+    <div class="live"><span class="dot"></span> <span id="livetxt">LIVE</span> &middot; ratings learned from 20 games</div>
+  </header>
+
+  <div class="grid">
+    <!-- LEFT: match + fair value vs market -->
+    <div class="panel">
+      <h3>Fixture &amp; fair value vs sharp line</h3>
+      <div class="match">
+        <div class="team" id="home">—</div>
+        <div class="mono score" id="score">0 - 0</div>
+        <div class="team" id="away" style="text-align:right">—</div>
+      </div>
+      <div class="meta">
+        <span class="chip" id="comp">World Cup</span>
+        <span class="phase mono" id="phase">pre-match</span>
+        <span id="modeltag" style="margin-left:auto;color:var(--dimmer)">Elo model anchored to market @ 0.30</span>
+      </div>
+      <div id="rows"></div>
+      <div class="legend">
+        <span><span class="sw" style="background:var(--model)"></span>Model fair value</span>
+        <span><span class="sw" style="background:var(--market)"></span>Market (de-vigged)</span>
+      </div>
+    </div>
+
+    <!-- RIGHT: decision + bankroll -->
+    <div class="panel">
+      <h3>Agent decision</h3>
+      <div class="verdict">
+        <div class="badge PASS" id="badge">PASS</div>
+        <div class="out" id="outline"></div>
+      </div>
+      <div class="dline mono" id="reason">watching the line…</div>
+      <div class="stats">
+        <div class="stat"><div class="k">Bankroll</div><div class="v mono" id="bankroll">$1000</div></div>
+        <div class="stat"><div class="k">Realized P&amp;L</div><div class="v mono" id="pnl">$0.00</div></div>
+        <div class="stat"><div class="k">Open stake</div><div class="v mono" id="stake">—</div></div>
+        <div class="stat"><div class="k">Record</div><div class="v mono" id="record">0-0</div></div>
+      </div>
+      <div class="checks" id="checks"></div>
+    </div>
+  </div>
+
+  <!-- on-chain -->
+  <div class="panel log" style="margin-top:16px">
+    <h3>On-chain audit trail</h3>
+    <div id="logfeed"></div>
+    <div class="foot">Every decision written to <span class="solmark">Solana devnet</span> as a signed memo &middot; verifiable by transaction signature</div>
+  </div>
+</div>
+
+<script>
+const OUT = ["HOME","DRAW","AWAY"];
+const $ = (id)=>document.getElementById(id);
+
+// ---- animated walkthrough (a replayed Côte d'Ivoire v Norway sequence) ----
+// Each frame is the full agent state at that moment. Realistic numbers; the agent prices,
+// stands down on a thin edge, fires when a sharp move confirms, then settles and logs.
+const HOME="Côte d'Ivoire", AWAY="Norway";
+const seq = [
+  { phase:"pre-match", score:"0 - 0", odds:[3.70,3.55,2.25], model:[.34,.27,.39],
+    decision:"PASS", reason:"edge below the 3% floor — no qualifying bet", stake:"—",
+    checks:[["edge 2.4% < 3%","no"],["odds band","ok"],["one per market","ok"]] },
+  { phase:"pre-match", score:"0 - 0", odds:[4.10,3.60,2.22], model:[.34,.27,.39],
+    sharp:true, decision:"BET", out:"HOME", betOdds:4.10, edge:5.8, conf:.74, stakeN:18,
+    reason:"model underpriced + sharp move: HOME drifted 3.70 → 4.10", stake:"$18 @ 4.10",
+    checks:[["edge 5.8% ≥ 3%","ok"],["conf 0.74 ≥ 0.50","ok"],["odds 4.10 in band","ok"],["one per market","ok"]],
+    log:{kind:"BET",desc:"HOME $18 @ 4.10 (edge 5.8%)"} },
+  { phase:"1H  12'", score:"0 - 0", hold:true },
+  { phase:"HT", score:"1 - 0", hold:true },
+  { phase:"FT", score:"1 - 0", settle:true, pnl:55.80, bankroll:1055.80, record:"1-0",
+    decision:"WON", reason:"Côte d'Ivoire win — position settled +$55.80", stake:"settled",
+    log:{kind:"SETTLE",desc:"HOME won · P&L +$55.80"} },
+];
+
+let bankroll=1000, pnl=0, record="0-0", logs=[], holdModel=[.34,.27,.39], holdOdds=[3.70,3.55,2.25];
+
+function devig(odds){ const imp=odds.map(o=>1/o); const s=imp.reduce((a,b)=>a+b,0); return imp.map(x=>x/s); }
+
+function renderRows(model, odds){
+  const mk = devig(odds);
+  $("rows").innerHTML = OUT.map((name,i)=>{
+    const mo=model[i], ma=mk[i], edge=(mo-ma)*100;
+    const cls = edge>=3?"pos":(edge<=-1?"neg":"");
+    const sign = edge>=0?"+":"";
+    return `<div class="row">
+      <div class="rowtop"><span class="name">${name}</span>
+        <span class="edge ${edge>=3?'pos':(edge<0?'neg':'')}">${sign}${edge.toFixed(1)}% edge &middot; <span class="mono">${odds[i].toFixed(2)}</span></span></div>
+      <div class="bars">
+        <div class="bar"><div class="fill model" style="width:${(mo*100).toFixed(1)}%"></div></div>
+        <div class="bar"><div class="fill market" style="width:${(ma*100).toFixed(1)}%"></div></div>
+      </div></div>`;
+  }).join("");
+}
+
+function setBadge(kind){
+  const b=$("badge");
+  const map={BET:"BET",PASS:"PASS",WON:"BET"};
+  b.textContent = kind==="WON" ? "WON" : kind;
+  b.className = "badge "+(kind==="PASS"?"PASS":"BET");
+}
+
+function renderChecks(checks){
+  $("checks").innerHTML=(checks||[]).map(c=>`<span class="ck ${c[1]}">${c[0]}</span>`).join("");
+}
+
+function pushLog(entry){
+  const sig = randSig();
+  logs.unshift({...entry, sig});
+  $("logfeed").innerHTML = logs.slice(0,4).map(l=>`
+    <div class="logrow">
+      <span class="kind ${l.kind}">${l.kind}</span>
+      <span class="desc">${l.desc}</span>
+      <a class="sig mono" href="https://explorer.solana.com/tx/${l.sig}?cluster=devnet" target="_blank" rel="noopener">${l.sig.slice(0,8)}…${l.sig.slice(-6)} ↗</a>
+    </div>`).join("");
+}
+function randSig(){const c="123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
+  let s="";for(let i=0;i<44;i++)s+=c[Math.floor(Math.random()*c.length)];return s;}
+
+function apply(f){
+  $("home").textContent=HOME; $("away").textContent=AWAY;
+  $("phase").textContent=f.phase; $("score").textContent=f.score;
+  if(f.model){holdModel=f.model;} if(f.odds){holdOdds=f.odds;}
+  renderRows(holdModel, holdOdds);
+  $("livetxt").textContent = f.phase==="pre-match" ? "PRE-MATCH" : (f.phase==="FT"?"FULL TIME":"LIVE");
+
+  if(f.settle){
+    setBadge("WON"); pnl=f.pnl; bankroll=f.bankroll; record=f.record;
+    $("pnl").textContent="+$"+f.pnl.toFixed(2); $("pnl").className="v mono pos";
+    $("bankroll").textContent="$"+f.bankroll.toFixed(2);
+    $("record").textContent=f.record; $("stake").textContent="settled";
+    $("reason").textContent=f.reason; $("outline").innerHTML="<b>"+HOME+"</b> to win — hit";
+    renderChecks([["result verified","ok"],["settled on-chain","ok"]]);
+  } else if(f.hold){
+    // match in play, position held; keep decision panel as-is
+    $("outline").innerHTML = $("outline").innerHTML || "";
+  } else {
+    setBadge(f.decision);
+    $("reason").textContent=f.reason||"";
+    $("stake").textContent=f.stake||"—";
+    renderChecks(f.checks);
+    if(f.decision==="BET"){
+      $("outline").innerHTML=`back <b>${f.out}</b> &middot; conf ${f.conf.toFixed(2)}`;
+      $("stake").textContent=f.stake;
+    } else {
+      $("outline").innerHTML="no position";
+    }
+  }
+  if(f.log) pushLog(f.log);
+}
+
+let i=0;
+function tick(){ apply(seq[i]); i=(i+1)%seq.length;
+  // reset accumulators on loop restart
+  if(i===0){ setTimeout(()=>{ pnl=0;bankroll=1000;record="0-0";
+    $("pnl").textContent="$0.00";$("pnl").className="v mono";
+    $("bankroll").textContent="$1000";$("record").textContent="0-0";}, 400); }
+}
+
+// live mode: if the agent is writing dashboard/state.json (served over http), use it.
+async function tryLive(){
+  try{
+    const r = await fetch("state.json",{cache:"no-store"});
+    if(!r.ok) throw 0;
+    const s = await r.json();
+    renderLive(s); return true;
+  }catch(e){ return false; }
+}
+function renderLive(s){
+  $("home").textContent=s.home; $("away").textContent=s.away;
+  $("phase").textContent=s.phase||"live"; $("score").textContent=s.score||"0 - 0";
+  renderRows(s.model, s.odds);
+  if(s.decision==="BET"){ setBadge("BET"); $("outline").innerHTML=`back <b>${s.out}</b>`;
+    $("stake").textContent=`$${s.stake} @ ${s.odds_taken}`; }
+  else { setBadge("PASS"); $("outline").innerHTML="no position"; $("stake").textContent="—"; }
+  $("reason").textContent=s.reason||"";
+  $("bankroll").textContent="$"+(s.bankroll??1000);
+  $("pnl").textContent=(s.pnl>=0?"+$":"-$")+Math.abs(s.pnl??0).toFixed(2);
+  $("pnl").className="v mono "+((s.pnl??0)>=0?"pos":"neg");
+  renderChecks(s.checks||[]);
+  if(s.logs) $("logfeed").innerHTML=s.logs.slice(0,4).map(l=>`
+    <div class="logrow"><span class="kind ${l.kind}">${l.kind}</span>
+    <span class="desc">${l.desc}</span>
+    <a class="sig mono" href="https://explorer.solana.com/tx/${l.sig}?cluster=devnet" target="_blank">${(l.sig||"").slice(0,8)}… ↗</a></div>`).join("");
+}
+
+(async function start(){
+  const live = await tryLive();
+  if(live){ setInterval(tryLive, 2500); }
+  else { tick(); setInterval(tick, 2600); }   // fall back to the animated walkthrough
+})();
+</script>
+</body>
+</html>

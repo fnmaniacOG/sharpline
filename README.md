@@ -42,6 +42,7 @@ sharpline/
     agent.py             the autonomous loop: process -> decide -> settle -> P&L
     run_live.py          run the agent end to end on real TxLINE data
   onchain/log.ts         write each decision to devnet as a Solana Memo transaction
+  dashboard/index.html   live visual dashboard of the agent (fair value, edge, decision, P&L, on-chain)
   docs/                  technical write-up, demo script, API feedback
 ```
 
@@ -77,6 +78,13 @@ npm run log
 ```
 
 Useful flags: `--once` for a single pass, `--record match.jsonl` to bank a live match for replay, `--model-weight` to set how far the model may deviate from the sharp line.
+
+## Dashboard
+
+Open `dashboard/index.html` in a browser to see the agent visually: the match, the model's fair value against the de-vigged market as paired bars, the edge on each outcome, the decision with its discipline checks, bankroll and P&L, and the on-chain log.
+
+- **Standalone:** double-click the file. It runs an animated walkthrough of a full sequence (price, stand down on a thin edge, fire on a confirmed edge, settle, log) with no setup.
+- **Live:** run the agent with `--dashboard dashboard/state.json`, serve the folder with `python3 -m http.server 8000` from this directory, and open `http://localhost:8000/dashboard/` to watch the real agent update.
 
 ## On-chain audit trail
 

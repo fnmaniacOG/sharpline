@@ -23,7 +23,13 @@
   .logo{font-weight:800;font-size:26px;letter-spacing:-.5px}
   .logo span{color:var(--model)}
   .tag{color:var(--dim);font-size:13px}
-  .live{margin-left:auto;display:flex;align-items:center;gap:8px;font-size:12px;color:var(--dim);
+  .ctl{margin-left:auto;cursor:pointer;font-weight:700;font-size:13px;border:none;border-radius:999px;
+    padding:9px 20px;background:var(--model);color:#04140f;box-shadow:0 6px 20px rgba(47,214,166,.28);
+    transition:.18s;font-family:inherit}
+  .ctl:hover{filter:brightness(1.06)}
+  .ctl.on{background:var(--neg);color:#fff;box-shadow:0 6px 20px rgba(255,92,114,.28)}
+  .ctl:disabled{opacity:.55;cursor:default}
+  .live{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--dim);
     background:var(--panel);border:1px solid var(--line);padding:7px 12px;border-radius:999px}
   .dot{width:8px;height:8px;border-radius:50%;background:var(--sol2);box-shadow:0 0 0 0 rgba(20,241,149,.6);
     animation:pulse 1.8s infinite}
@@ -97,7 +103,8 @@
       <div class="logo">Sharp<span>Line</span></div>
     </div>
     <div class="tag">Autonomous World Cup trading agent &middot; TxLINE feed &middot; Solana devnet</div>
-    <div class="live"><span class="dot"></span> <span id="livetxt">LIVE</span> &middot; ratings learned from 20 games</div>
+    <button id="ctl" class="ctl">Start agent</button>
+    <div class="live" style="margin-left:14px"><span class="dot"></span> <span id="livetxt">IDLE</span> &middot; ratings learned from 20 games</div>
   </header>
 
   <div class="grid">
@@ -148,38 +155,18 @@
 </div>
 
 <script>
+// REAL DATA ONLY. This dashboard renders whatever the running agent writes to state.json.
+// There is no scripted/demo data. If the agent is not running, it shows an idle state.
 const OUT = ["HOME","DRAW","AWAY"];
 const $ = (id)=>document.getElementById(id);
-
-// ---- animated walkthrough (a replayed Côte d'Ivoire v Norway sequence) ----
-// Each frame is the full agent state at that moment. Realistic numbers; the agent prices,
-// stands down on a thin edge, fires when a sharp move confirms, then settles and logs.
-const HOME="Côte d'Ivoire", AWAY="Norway";
-const seq = [
-  { phase:"pre-match", score:"0 - 0", odds:[3.70,3.55,2.25], model:[.34,.27,.39],
-    decision:"PASS", reason:"edge below the 3% floor — no qualifying bet", stake:"—",
-    checks:[["edge 2.4% < 3%","no"],["odds band","ok"],["one per market","ok"]] },
-  { phase:"pre-match", score:"0 - 0", odds:[4.10,3.60,2.22], model:[.34,.27,.39],
-    sharp:true, decision:"BET", out:"HOME", betOdds:4.10, edge:5.8, conf:.74, stakeN:18,
-    reason:"model underpriced + sharp move: HOME drifted 3.70 → 4.10", stake:"$18 @ 4.10",
-    checks:[["edge 5.8% ≥ 3%","ok"],["conf 0.74 ≥ 0.50","ok"],["odds 4.10 in band","ok"],["one per market","ok"]],
-    log:{kind:"BET",desc:"HOME $18 @ 4.10 (edge 5.8%)"} },
-  { phase:"1H  12'", score:"0 - 0", hold:true },
-  { phase:"HT", score:"1 - 0", hold:true },
-  { phase:"FT", score:"1 - 0", settle:true, pnl:55.80, bankroll:1055.80, record:"1-0",
-    decision:"WON", reason:"Côte d'Ivoire win — position settled +$55.80", stake:"settled",
-    log:{kind:"SETTLE",desc:"HOME won · P&L +$55.80"} },
-];
-
-let bankroll=1000, pnl=0, record="0-0", logs=[], holdModel=[.34,.27,.39], holdOdds=[3.70,3.55,2.25];
 
 function devig(odds){ const imp=odds.map(o=>1/o); const s=imp.reduce((a,b)=>a+b,0); return imp.map(x=>x/s); }
 
 function renderRows(model, odds){
+  if(!model || !odds){ $("rows").innerHTML=""; return; }
   const mk = devig(odds);
   $("rows").innerHTML = OUT.map((name,i)=>{
     const mo=model[i], ma=mk[i], edge=(mo-ma)*100;
-    const cls = edge>=3?"pos":(edge<=-1?"neg":"");
     const sign = edge>=0?"+":"";
     return `<div class="row">
       <div class="rowtop"><span class="name">${name}</span>
@@ -191,102 +178,87 @@ function renderRows(model, odds){
   }).join("");
 }
 
-function setBadge(kind){
-  const b=$("badge");
-  const map={BET:"BET",PASS:"PASS",WON:"BET"};
-  b.textContent = kind==="WON" ? "WON" : kind;
-  b.className = "badge "+(kind==="PASS"?"PASS":"BET");
+function setBadge(kind){ const b=$("badge"); b.textContent=kind; b.className="badge "+(kind==="PASS"?"PASS":"BET"); }
+function renderChecks(checks){ $("checks").innerHTML=(checks||[]).map(c=>`<span class="ck ${c[1]}">${c[0]}</span>`).join(""); }
+
+function renderLog(logs){
+  $("logfeed").innerHTML = (logs||[]).slice(0,5).map(l=>{
+    const sig = l.sig
+      ? `<a class="sig mono" href="https://explorer.solana.com/tx/${l.sig}?cluster=devnet" target="_blank">${l.sig.slice(0,8)}… &uarr;</a>`
+      : `<span class="sig mono" style="color:var(--sol2)">signed memo &rarr; devnet</span>`;
+    return `<div class="logrow"><span class="kind ${l.kind}">${l.kind}</span>
+      <span class="desc">${l.desc}</span>${sig}</div>`;
+  }).join("") || `<div class="logrow"><span class="desc" style="color:var(--dimmer)">no decisions posted yet</span></div>`;
 }
 
-function renderChecks(checks){
-  $("checks").innerHTML=(checks||[]).map(c=>`<span class="ck ${c[1]}">${c[0]}</span>`).join("");
+function showIdle(){
+  $("livetxt").textContent="IDLE";
+  $("home").textContent="—"; $("away").textContent="—"; $("score").textContent="0 - 0";
+  $("phase").textContent="waiting for agent"; $("rows").innerHTML="";
+  setBadge("PASS"); $("outline").innerHTML="agent not running";
+  $("reason").innerHTML='click <b>Start agent</b> (top right) to begin trading the live slate';
+  renderChecks([]); renderLog([]);
 }
 
-function pushLog(entry){
-  const sig = randSig();
-  logs.unshift({...entry, sig});
-  $("logfeed").innerHTML = logs.slice(0,4).map(l=>`
-    <div class="logrow">
-      <span class="kind ${l.kind}">${l.kind}</span>
-      <span class="desc">${l.desc}</span>
-      <a class="sig mono" href="https://explorer.solana.com/tx/${l.sig}?cluster=devnet" target="_blank" rel="noopener">${l.sig.slice(0,8)}…${l.sig.slice(-6)} ↗</a>
-    </div>`).join("");
-}
-function randSig(){const c="123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
-  let s="";for(let i=0;i<44;i++)s+=c[Math.floor(Math.random()*c.length)];return s;}
-
-function apply(f){
-  $("home").textContent=HOME; $("away").textContent=AWAY;
-  $("phase").textContent=f.phase; $("score").textContent=f.score;
-  if(f.model){holdModel=f.model;} if(f.odds){holdOdds=f.odds;}
-  renderRows(holdModel, holdOdds);
-  $("livetxt").textContent = f.phase==="pre-match" ? "PRE-MATCH" : (f.phase==="FT"?"FULL TIME":"LIVE");
-
-  if(f.settle){
-    setBadge("WON"); pnl=f.pnl; bankroll=f.bankroll; record=f.record;
-    $("pnl").textContent="+$"+f.pnl.toFixed(2); $("pnl").className="v mono pos";
-    $("bankroll").textContent="$"+f.bankroll.toFixed(2);
-    $("record").textContent=f.record; $("stake").textContent="settled";
-    $("reason").textContent=f.reason; $("outline").innerHTML="<b>"+HOME+"</b> to win — hit";
-    renderChecks([["result verified","ok"],["settled on-chain","ok"]]);
-  } else if(f.hold){
-    // match in play, position held; keep decision panel as-is
-    $("outline").innerHTML = $("outline").innerHTML || "";
-  } else {
-    setBadge(f.decision);
-    $("reason").textContent=f.reason||"";
-    $("stake").textContent=f.stake||"—";
-    renderChecks(f.checks);
-    if(f.decision==="BET"){
-      $("outline").innerHTML=`back <b>${f.out}</b> &middot; conf ${f.conf.toFixed(2)}`;
-      $("stake").textContent=f.stake;
-    } else {
-      $("outline").innerHTML="no position";
-    }
-  }
-  if(f.log) pushLog(f.log);
-}
-
-let i=0;
-function tick(){ apply(seq[i]); i=(i+1)%seq.length;
-  // reset accumulators on loop restart
-  if(i===0){ setTimeout(()=>{ pnl=0;bankroll=1000;record="0-0";
-    $("pnl").textContent="$0.00";$("pnl").className="v mono";
-    $("bankroll").textContent="$1000";$("record").textContent="0-0";}, 400); }
-}
-
-// live mode: if the agent is writing dashboard/state.json (served over http), use it.
-async function tryLive(){
-  try{
-    const r = await fetch("state.json",{cache:"no-store"});
-    if(!r.ok) throw 0;
-    const s = await r.json();
-    renderLive(s); return true;
-  }catch(e){ return false; }
-}
 function renderLive(s){
+  $("livetxt").textContent = s.phase==="pre-match" ? "PRE-MATCH" : (s.phase && s.phase.startsWith("F")?"FULL TIME":"LIVE");
   $("home").textContent=s.home; $("away").textContent=s.away;
   $("phase").textContent=s.phase||"live"; $("score").textContent=s.score||"0 - 0";
   renderRows(s.model, s.odds);
   if(s.decision==="BET"){ setBadge("BET"); $("outline").innerHTML=`back <b>${s.out}</b>`;
     $("stake").textContent=`$${s.stake} @ ${s.odds_taken}`; }
-  else { setBadge("PASS"); $("outline").innerHTML="no position"; $("stake").textContent="—"; }
+  else { setBadge("PASS"); $("outline").innerHTML="no position"; $("stake").textContent=s.stake||"—"; }
   $("reason").textContent=s.reason||"";
   $("bankroll").textContent="$"+(s.bankroll??1000);
-  $("pnl").textContent=(s.pnl>=0?"+$":"-$")+Math.abs(s.pnl??0).toFixed(2);
-  $("pnl").className="v mono "+((s.pnl??0)>=0?"pos":"neg");
+  const p=s.pnl??0;
+  $("pnl").textContent=(p>=0?"+$":"-$")+Math.abs(p).toFixed(2);
+  $("pnl").className="v mono "+(p>=0?"pos":"neg");
+  if(s.record) $("record").textContent=s.record;
   renderChecks(s.checks||[]);
-  if(s.logs) $("logfeed").innerHTML=s.logs.slice(0,4).map(l=>`
-    <div class="logrow"><span class="kind ${l.kind}">${l.kind}</span>
-    <span class="desc">${l.desc}</span>
-    <a class="sig mono" href="https://explorer.solana.com/tx/${l.sig}?cluster=devnet" target="_blank">${(l.sig||"").slice(0,8)}… ↗</a></div>`).join("");
+  renderLog(s.logs);
 }
 
-(async function start(){
-  const live = await tryLive();
-  if(live){ setInterval(tryLive, 2500); }
-  else { tick(); setInterval(tick, 2600); }   // fall back to the animated walkthrough
-})();
+async function tryLive(){
+  try{
+    const r = await fetch("state.json",{cache:"no-store"});
+    if(!r.ok) throw 0;
+    renderLive(await r.json());
+  }catch(e){ showIdle(); }
+}
+
+// ---- Start/Stop control (works when served by serve.py) ----
+let hasBackend = true;
+function setCtl(run){
+  const b=$("ctl");
+  b.disabled=false;
+  b.textContent = run ? "Stop agent" : "Start agent";
+  b.className = "ctl" + (run ? " on" : "");
+  b.dataset.run = run ? "1" : "";
+}
+async function status(){
+  try{
+    const r = await fetch("/agent/status",{cache:"no-store"});
+    if(!r.ok) throw 0;
+    hasBackend=true; setCtl((await r.json()).running);
+  }catch(e){
+    hasBackend=false;
+    const b=$("ctl"); b.textContent="Start agent"; b.disabled=true;
+    b.title="Open this page via serve.py (python3 serve.py) to enable the button.";
+  }
+}
+$("ctl").addEventListener("click", async ()=>{
+  if(!hasBackend) return;
+  const run = $("ctl").dataset.run==="1";
+  $("ctl").disabled=true;
+  try{ await fetch(run ? "/agent/stop" : "/agent/start", {method:"POST"}); }catch(e){}
+  setTimeout(status, 500);
+});
+
+showIdle();
+status();
+tryLive();
+setInterval(tryLive, 2500);   // pick up the agent's real state as soon as it writes it
+setInterval(status, 3000);    // keep the Start/Stop button in sync
 </script>
 </body>
 </html>

@@ -40,8 +40,10 @@ sharpline/
     signals.py           model-vs-market edge + sharp-move detector + confidence
     discipline.py        sizing, stake caps, odds band, no-bet rules
     agent.py             the autonomous loop: process -> decide -> settle -> P&L
-    run_live.py          run the agent end to end on real TxLINE data
+    run_live.py          run the agent on a single fixture
+    run_all.py           run the agent across the whole slate (multi-fixture)
   onchain/log.ts         write each decision to devnet as a Solana Memo transaction
+  serve.py               control panel server (serves the dashboard, Start/Stop the agent)
   dashboard/index.html   live visual dashboard of the agent (fair value, edge, decision, P&L, on-chain)
   docs/                  technical write-up, demo script, API feedback
 ```
@@ -81,10 +83,13 @@ Useful flags: `--once` for a single pass, `--record match.jsonl` to bank a live 
 
 ## Dashboard
 
-Open `dashboard/index.html` in a browser to see the agent visually: the match, the model's fair value against the de-vigged market as paired bars, the edge on each outcome, the decision with its discipline checks, bankroll and P&L, and the on-chain log.
+A live control panel for the agent: the match, the model's fair value against the de-vigged market as paired bars, the edge on each outcome, the decision with its discipline checks, bankroll and P&L, and the on-chain log. It shows real agent decisions only, nothing scripted.
 
-- **Standalone:** double-click the file. It runs an animated walkthrough of a full sequence (price, stand down on a thin edge, fire on a confirmed edge, settle, log) with no setup.
-- **Live:** run the agent with `--dashboard dashboard/state.json`, serve the folder with `python3 -m http.server 8000` from this directory, and open `http://localhost:8000/dashboard/` to watch the real agent update.
+```bash
+python3 serve.py            # then open http://localhost:8000/dashboard/
+```
+
+Click **Start agent** on the page. It launches the multi-fixture agent (`run_all.py`), which trades across the whole live slate, and the dashboard fills with real bets, settlements, and P&L as they happen. Click **Stop agent** to halt it. Everything shown is real; when the agent is not running the dashboard sits idle.
 
 ## On-chain audit trail
 

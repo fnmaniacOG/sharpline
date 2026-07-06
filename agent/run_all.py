@@ -22,7 +22,18 @@ from agent import Agent
 
 ORDER = ("HOME", "DRAW", "AWAY")
 WINDOW_BEFORE_MS = 3 * 3600 * 1000      # include fixtures started up to 3h ago
-WINDOW_AFTER_MS = 30 * 3600 * 1000      # and starting within the next ~30h
+WINDOW_AFTER_MS = 48 * 3600 * 1000      # and starting within the next two days
+
+
+def rel_when(start, now) -> str:
+    if not start:
+        return ""
+    h = (start - now) / 3600000.0
+    if h < 0:
+        return "live"
+    if h < 1:
+        return f"in {int(h*60)}m"
+    return f"in {int(round(h))}h"
 
 
 def log_decision(path: str, rec: dict) -> None:
@@ -82,6 +93,7 @@ def main():
         now = time.time() * 1000
         slate = [f for f in all_fixtures
                  if now - WINDOW_BEFORE_MS <= (f.get("start") or 0) <= now + WINDOW_AFTER_MS]
+        slate.sort(key=lambda f: f.get("start") or 0)   # imminent first
         last_fid = None
 
         for f in slate:
@@ -148,11 +160,23 @@ def main():
                 break
         if not spot and last_fid:
             spot = panels.get(last_fid)
-        watch = [{"home": p["home"], "away": p["away"], "phase": p.get("phase", "—"),
-                  "decision": p.get("decision", "PASS"), "out": p.get("out")}
-                 for p in panels.values()]
-        if args.dashboard and spot:
-            write_state(args.dashboard, spot, agent, wins, losses, logs, watch)
+        # watchlist = every fixture in the window; priced ones show their decision, the rest
+        # show as waiting for a line, so the full slate being monitored is visible.
+        watch = []
+        for f in slate:
+            p = panels.get(f["fixture"])
+            if p:
+                watch.append({"home": p["home"], "away": p["away"], "phase": p.get("phase", "—"),
+                              "decision": p.get("decision", "PASS"), "out": p.get("out")})
+            else:
+                watch.append({"home": f["p1"], "away": f["p2"],
+                              "phase": rel_when(f.get("start"), now), "decision": "WAIT", "out": None})
+        if args.dashboard and (spot or watch):
+            write_state(args.dashboard, spot or {"home": "—", "away": "—", "phase": "scanning",
+                        "score": "0 - 0", "model": None, "odds": None, "decision": "PASS",
+                        "out": None, "stake": "—", "odds_taken": None,
+                        "reason": "waiting for the first priced line", "checks": []},
+                        agent, wins, losses, logs, watch)
 
         st = agent.stats()
         print(f"[{it}] bankroll ${st['bankroll']} · P&L {st['realizedPnL']:+.2f} · "

@@ -103,6 +103,7 @@
   .wcard .s{font-size:11px;color:var(--dim);display:flex;gap:7px;align-items:center}
   .wtag{font-size:9.5px;font-weight:700;padding:1px 7px;border-radius:5px;letter-spacing:.4px}
   .wtag.BET{color:#04140f;background:var(--bet)} .wtag.PASS{color:var(--dim);background:#1a2338}
+  .wtag.WAIT{color:var(--dimmer);background:#141c2e}
 </style>
 </head>
 <body>
@@ -209,10 +210,14 @@ function renderLog(logs){
 function renderWatch(w){
   const el=$("watch"); if(!el) return;
   if(!w || !w.length){ el.innerHTML='<span style="color:var(--dimmer);font-size:12px">no priced fixtures yet</span>'; return; }
-  el.innerHTML = w.map(x=>`<div class="wcard">
-    <span class="m">${x.home} v ${x.away}</span>
-    <span class="s"><span class="wtag ${x.decision}">${x.decision}${x.decision==="BET"&&x.out?" "+x.out:""}</span> ${x.phase}</span>
-  </div>`).join("");
+  el.innerHTML = w.map(x=>{
+    const label = x.decision==="WAIT" ? "waiting"
+      : (x.decision==="BET" && x.out ? "BET "+x.out : x.decision);
+    return `<div class="wcard">
+      <span class="m">${x.home} v ${x.away}</span>
+      <span class="s"><span class="wtag ${x.decision}">${label}</span> ${x.phase}</span>
+    </div>`;
+  }).join("");
 }
 
 function showIdle(){

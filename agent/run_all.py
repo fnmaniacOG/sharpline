@@ -49,10 +49,10 @@ def panel_for(fx, anchored, odds, decision, phase="pre-match", score="0 - 0") ->
     }
 
 
-def write_state(path, panel, agent, wins, losses, logs):
+def write_state(path, panel, agent, wins, losses, logs, watch):
     st = agent.stats()
     state = {**panel, "bankroll": st["bankroll"], "pnl": st["realizedPnL"],
-             "record": f"{wins}-{losses}", "logs": logs[-6:]}
+             "record": f"{wins}-{losses}", "logs": logs[-6:], "watch": watch[:10]}
     with open(path, "w") as f:
         json.dump(state, f)
 
@@ -148,8 +148,11 @@ def main():
                 break
         if not spot and last_fid:
             spot = panels.get(last_fid)
+        watch = [{"home": p["home"], "away": p["away"], "phase": p.get("phase", "—"),
+                  "decision": p.get("decision", "PASS"), "out": p.get("out")}
+                 for p in panels.values()]
         if args.dashboard and spot:
-            write_state(args.dashboard, spot, agent, wins, losses, logs)
+            write_state(args.dashboard, spot, agent, wins, losses, logs, watch)
 
         st = agent.stats()
         print(f"[{it}] bankroll ${st['bankroll']} · P&L {st['realizedPnL']:+.2f} · "

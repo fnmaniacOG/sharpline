@@ -30,7 +30,7 @@ def running() -> bool:
     return _proc is not None and _proc.poll() is None
 
 
-def start(weight: str = "0.30") -> None:
+def start(weight: str = "0.50") -> None:
     global _proc
     if running():
         return

@@ -94,6 +94,15 @@
   .logrow .desc{color:var(--dim)}
   .foot{margin-top:14px;color:var(--dimmer);font-size:11.5px;display:flex;align-items:center;gap:8px}
   .solmark{color:var(--sol2);font-weight:700}
+
+  /* watchlist */
+  .watch{display:flex;flex-wrap:wrap;gap:8px}
+  .wcard{display:flex;flex-direction:column;gap:4px;background:var(--panel2);border:1px solid var(--line);
+    border-radius:10px;padding:9px 13px;min-width:158px}
+  .wcard .m{font-size:13px;font-weight:600}
+  .wcard .s{font-size:11px;color:var(--dim);display:flex;gap:7px;align-items:center}
+  .wtag{font-size:9.5px;font-weight:700;padding:1px 7px;border-radius:5px;letter-spacing:.4px}
+  .wtag.BET{color:#04140f;background:var(--bet)} .wtag.PASS{color:var(--dim);background:#1a2338}
 </style>
 </head>
 <body>
@@ -146,6 +155,12 @@
     </div>
   </div>
 
+  <!-- monitoring the slate -->
+  <div class="panel" style="margin-top:16px">
+    <h3>Monitoring the slate</h3>
+    <div id="watch" class="watch"></div>
+  </div>
+
   <!-- on-chain -->
   <div class="panel log" style="margin-top:16px">
     <h3>On-chain audit trail</h3>
@@ -191,13 +206,22 @@ function renderLog(logs){
   }).join("") || `<div class="logrow"><span class="desc" style="color:var(--dimmer)">no decisions posted yet</span></div>`;
 }
 
+function renderWatch(w){
+  const el=$("watch"); if(!el) return;
+  if(!w || !w.length){ el.innerHTML='<span style="color:var(--dimmer);font-size:12px">no priced fixtures yet</span>'; return; }
+  el.innerHTML = w.map(x=>`<div class="wcard">
+    <span class="m">${x.home} v ${x.away}</span>
+    <span class="s"><span class="wtag ${x.decision}">${x.decision}${x.decision==="BET"&&x.out?" "+x.out:""}</span> ${x.phase}</span>
+  </div>`).join("");
+}
+
 function showIdle(){
   $("livetxt").textContent="IDLE";
   $("home").textContent="—"; $("away").textContent="—"; $("score").textContent="0 - 0";
   $("phase").textContent="waiting for agent"; $("rows").innerHTML="";
   setBadge("PASS"); $("outline").innerHTML="agent not running";
   $("reason").innerHTML='click <b>Start agent</b> (top right) to begin trading the live slate';
-  renderChecks([]); renderLog([]);
+  renderChecks([]); renderLog([]); renderWatch([]);
 }
 
 function renderLive(s){
@@ -216,6 +240,7 @@ function renderLive(s){
   if(s.record) $("record").textContent=s.record;
   renderChecks(s.checks||[]);
   renderLog(s.logs);
+  renderWatch(s.watch);
 }
 
 async function tryLive(){

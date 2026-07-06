@@ -160,17 +160,19 @@ def main():
                 break
         if not spot and last_fid:
             spot = panels.get(last_fid)
-        # watchlist = every fixture in the window; priced ones show their decision, the rest
-        # show as waiting for a line, so the full slate being monitored is visible.
+        # watchlist = every fixture in the window, each carrying its FULL panel so the
+        # dashboard can load any game's edges on click. Unpriced ones are waiting stubs.
         watch = []
         for f in slate:
             p = panels.get(f["fixture"])
             if p:
-                watch.append({"home": p["home"], "away": p["away"], "phase": p.get("phase", "—"),
-                              "decision": p.get("decision", "PASS"), "out": p.get("out")})
+                watch.append(p)
             else:
                 watch.append({"home": f["p1"], "away": f["p2"],
-                              "phase": rel_when(f.get("start"), now), "decision": "WAIT", "out": None})
+                              "phase": rel_when(f.get("start"), now), "score": "0 - 0",
+                              "model": None, "odds": None, "decision": "WAIT", "out": None,
+                              "stake": "—", "odds_taken": None,
+                              "reason": "waiting for the market to price this fixture", "checks": []})
         if args.dashboard and (spot or watch):
             write_state(args.dashboard, spot or {"home": "—", "away": "—", "phase": "scanning",
                         "score": "0 - 0", "model": None, "odds": None, "decision": "PASS",

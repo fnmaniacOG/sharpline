@@ -98,7 +98,9 @@
   /* watchlist */
   .watch{display:flex;flex-wrap:wrap;gap:8px}
   .wcard{display:flex;flex-direction:column;gap:4px;background:var(--panel2);border:1px solid var(--line);
-    border-radius:10px;padding:9px 13px;min-width:158px}
+    border-radius:10px;padding:9px 13px;min-width:158px;cursor:pointer;transition:.15s}
+  .wcard:hover{border-color:#2c3a5c}
+  .wcard.active{border-color:var(--model);box-shadow:0 0 0 1px var(--model) inset}
   .wcard .m{font-size:13px;font-weight:600}
   .wcard .s{font-size:11px;color:var(--dim);display:flex;gap:7px;align-items:center}
   .wtag{font-size:9.5px;font-weight:700;padding:1px 7px;border-radius:5px;letter-spacing:.4px}
@@ -207,17 +209,28 @@ function renderLog(logs){
   }).join("") || `<div class="logrow"><span class="desc" style="color:var(--dimmer)">no decisions posted yet</span></div>`;
 }
 
-function renderWatch(w){
+function keyOf(p){ return (p.home||"")+" | "+(p.away||""); }
+let selectedKey = null;   // which card the user clicked (null = auto-follow the spotlight)
+let lastState = null;
+
+function renderWatch(w, activeKey){
   const el=$("watch"); if(!el) return;
   if(!w || !w.length){ el.innerHTML='<span style="color:var(--dimmer);font-size:12px">no priced fixtures yet</span>'; return; }
   el.innerHTML = w.map(x=>{
     const label = x.decision==="WAIT" ? "waiting"
       : (x.decision==="BET" && x.out ? "BET "+x.out : x.decision);
-    return `<div class="wcard">
+    const active = keyOf(x)===activeKey ? " active" : "";
+    return `<div class="wcard${active}" data-key="${keyOf(x).replace(/"/g,'')}">
       <span class="m">${x.home} v ${x.away}</span>
       <span class="s"><span class="wtag ${x.decision}">${label}</span> ${x.phase}</span>
     </div>`;
   }).join("");
+  el.querySelectorAll(".wcard").forEach(c=>{
+    c.onclick = ()=>{
+      selectedKey = (selectedKey===c.dataset.key) ? null : c.dataset.key;  // click again = auto
+      if(lastState) renderLive(lastState);
+    };
+  });
 }
 
 function showIdle(){
@@ -229,23 +242,39 @@ function showIdle(){
   renderChecks([]); renderLog([]); renderWatch([]);
 }
 
-function renderLive(s){
-  $("livetxt").textContent = s.phase==="pre-match" ? "PRE-MATCH" : (s.phase && s.phase.startsWith("F")?"FULL TIME":"LIVE");
-  $("home").textContent=s.home; $("away").textContent=s.away;
-  $("phase").textContent=s.phase||"live"; $("score").textContent=s.score||"0 - 0";
-  renderRows(s.model, s.odds);
-  if(s.decision==="BET"){ setBadge("BET"); $("outline").innerHTML=`back <b>${s.out}</b>`;
-    $("stake").textContent=`$${s.stake} @ ${s.odds_taken}`; }
-  else { setBadge("PASS"); $("outline").innerHTML="no position"; $("stake").textContent=s.stake||"—"; }
-  $("reason").textContent=s.reason||"";
+function renderMain(p){   // the fixture + decision (follows the selected card)
+  const ph=p.phase||"—";
+  $("livetxt").textContent = (ph==="pre-match"||ph==="scheduled") ? "PRE-MATCH"
+    : (ph.startsWith("F") ? "FULL TIME" : (p.decision==="WAIT" ? "WAITING" : "LIVE"));
+  $("home").textContent=p.home; $("away").textContent=p.away;
+  $("phase").textContent=ph; $("score").textContent=p.score||"0 - 0";
+  renderRows(p.model, p.odds);
+  if(p.decision==="BET"){ setBadge("BET"); $("outline").innerHTML=`back <b>${p.out}</b>`;
+    $("stake").textContent=`$${p.stake} @ ${p.odds_taken}`; }
+  else if(p.decision==="WAIT"){ setBadge("PASS"); $("outline").innerHTML="waiting for line"; $("stake").textContent="—"; }
+  else { setBadge("PASS"); $("outline").innerHTML="no position"; $("stake").textContent=(p.stake&&p.stake!=="—")?`$${p.stake}`:"—"; }
+  $("reason").textContent=p.reason||"";
+  renderChecks(p.checks||[]);
+}
+
+function renderStats(s){   // portfolio totals (same regardless of which card is selected)
   $("bankroll").textContent="$"+(s.bankroll??1000);
   const p=s.pnl??0;
   $("pnl").textContent=(p>=0?"+$":"-$")+Math.abs(p).toFixed(2);
   $("pnl").className="v mono "+(p>=0?"pos":"neg");
   if(s.record) $("record").textContent=s.record;
-  renderChecks(s.checks||[]);
+}
+
+function renderLive(s){
+  lastState=s;
+  const watch=s.watch||[];
+  let main=null;
+  if(selectedKey) main=watch.find(p=>keyOf(p)===selectedKey);
+  if(!main) main=s;                 // auto: follow the spotlight
+  renderMain(main);
+  renderStats(s);
   renderLog(s.logs);
-  renderWatch(s.watch);
+  renderWatch(watch, keyOf(main));
 }
 
 async function tryLive(){

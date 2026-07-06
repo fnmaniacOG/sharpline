@@ -138,8 +138,16 @@ def main():
                 anchored = anchor_to_market(models[fid], market_p, args.model_weight)
                 decs = agent.process(to_agent_update(snap, anchored))
                 prev = panels.get(fid, {})
-                panels[fid] = panel_for(f, anchored, snap.outcomes, decs[0] if decs else None,
-                                        prev.get("phase", "pre-match"), prev.get("score", "0 - 0"))
+                panel = panel_for(f, anchored, snap.outcomes, decs[0] if decs else None,
+                                  prev.get("phase", "pre-match"), prev.get("score", "0 - 0"))
+                if not decs:   # explain WHY it passed (which gate the best outcome missed)
+                    tail = [l for l in agent.log[-3:] if l["fixture"] == fid]
+                    if tail:
+                        best = max(tail, key=lambda l: l["signal"].get("edge", -9))
+                        why = best["decision"].get("reason", "")
+                        if why:
+                            panel["reason"] = f"closest was {best['signal']['outcome']}: {why}"
+                panels[fid] = panel
                 last_fid = fid
                 for d in decs:
                     desc = (f"{f['p1']} v {f['p2']}: {d['outcome']} ${d['stake']} @ "
@@ -196,6 +204,7 @@ def main():
                               "model": None, "odds": None, "decision": "WAIT", "out": None,
                               "stake": "—", "odds_taken": None,
                               "reason": "waiting for the market to price this fixture", "checks": []})
+        agent.log = agent.log[-300:]   # bound memory over long runs
         save_panels(panels)   # remember the slate for the next run
         if args.dashboard and (spot or watch):
             write_state(args.dashboard, spot or {"home": "—", "away": "—", "phase": "scanning",

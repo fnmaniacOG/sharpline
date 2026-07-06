@@ -60,6 +60,11 @@
   .fill{height:100%;border-radius:6px;transition:width .9s cubic-bezier(.4,1.2,.4,1)}
   .fill.model{background:linear-gradient(90deg,#1f8f74,var(--model))}
   .fill.market{background:linear-gradient(90deg,#b9862f,var(--market))}
+  .barrow{display:flex;align-items:center;gap:10px;margin:4px 0}
+  .barrow .bar{flex:1;margin:0}
+  .pct{font-size:11.5px;font-variant-numeric:tabular-nums;min-width:46px;text-align:right;
+    font-family:"SF Mono",ui-monospace,Menlo,monospace}
+  .pct.pm{color:var(--model)} .pct.pk{color:var(--market)}
   .legend{display:flex;gap:16px;font-size:11.5px;color:var(--dim);margin-top:4px}
   .sw{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:6px;vertical-align:-1px}
 
@@ -190,8 +195,8 @@ function renderRows(model, odds){
       <div class="rowtop"><span class="name">${name}</span>
         <span class="edge ${edge>=3?'pos':(edge<0?'neg':'')}">${sign}${edge.toFixed(1)}% edge &middot; <span class="mono">${odds[i].toFixed(2)}</span></span></div>
       <div class="bars">
-        <div class="bar"><div class="fill model" style="width:${(mo*100).toFixed(1)}%"></div></div>
-        <div class="bar"><div class="fill market" style="width:${(ma*100).toFixed(1)}%"></div></div>
+        <div class="barrow"><div class="bar"><div class="fill model" style="width:${(mo*100).toFixed(1)}%"></div></div><span class="pct pm">${(mo*100).toFixed(1)}%</span></div>
+        <div class="barrow"><div class="bar"><div class="fill market" style="width:${(ma*100).toFixed(1)}%"></div></div><span class="pct pk">${(ma*100).toFixed(1)}%</span></div>
       </div></div>`;
   }).join("");
 }

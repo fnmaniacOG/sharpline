@@ -261,8 +261,9 @@ function renderMain(p){   // the fixture + decision (follows the selected card)
   const dnbEl=$("dnb");
   if(p.dnb && p.dnb.odds){
     const o=p.dnb.odds;
+    const pr = devig([o.HOME, o.AWAY]);   // de-vigged implied probabilities
     const tag = p.dnb.decision==="BET" ? ` <span class="wtag BET">BET ${p.dnb.out}</span>` : "";
-    dnbEl.innerHTML = `<span class="lbl">Draw-no-bet</span> ${p.home} <b>${(o.HOME||0).toFixed(2)}</b> &middot; ${p.away} <b>${(o.AWAY||0).toFixed(2)}</b>${tag}`;
+    dnbEl.innerHTML = `<span class="lbl">Draw-no-bet</span> ${p.home} <b>${(pr[0]*100).toFixed(1)}%</b> &middot; ${p.away} <b>${(pr[1]*100).toFixed(1)}%</b>${tag}`;
   } else { dnbEl.innerHTML=""; }
   renderRows(p.model, p.odds);
   if(p.decision==="BET"){ setBadge("BET"); $("outline").innerHTML=`back <b>${p.out}</b>`;

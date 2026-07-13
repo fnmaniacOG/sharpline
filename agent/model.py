@@ -177,6 +177,15 @@ def model_probs(home_team: str, away_team: str, neutral: bool = True) -> dict:
     return one_x_two(lam_home, lam_away)
 
 
+def dnb_probs(home_team: str, away_team: str, neutral: bool = True) -> dict:
+    """Draw-no-bet probabilities: the 1x2 model conditioned on a decisive result
+    (the draw's probability is removed and its mass split by relative strength)."""
+    p = model_probs(home_team, away_team, neutral)
+    ph, pa = p[HOME], p[AWAY]
+    total = ph + pa or 1.0
+    return {HOME: ph / total, AWAY: pa / total}
+
+
 def anchor_to_market(model_p: dict, market_p: dict, w_model: float = 0.30) -> dict:
     """Blend the Elo model with the de-vigged market consensus (the sharpest single source).
 

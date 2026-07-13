@@ -82,6 +82,9 @@ PRICE_SCALE = 1000.0
 # part1 = Participant1 (the feed's "home" side per Participant1IsHome), part2 = Participant2
 PRICE_TO_OUTCOME = {"part1": HOME, "draw": DRAW, "part2": AWAY}
 
+# second market: Asian Handicap line 0 == draw-no-bet (back part1 or part2; a draw refunds).
+DNB_MARKET = "DNB"
+
 
 @dataclass
 class MarketSnapshot:
@@ -144,6 +147,44 @@ def parse_odds_event(raw: dict) -> Optional[MarketSnapshot]:
         if set(outcomes) != {HOME, DRAW, AWAY}:
             return None
         return MarketSnapshot(fixture, "1x2", ts, outcomes)
+    except (TypeError, ValueError, KeyError):
+        return None
+
+
+def _market_line(raw: dict):
+    """Extract the numeric line from MarketParameters like 'line=2.5'."""
+    mp = str(raw.get("MarketParameters") or "")
+    for part in mp.replace(";", ",").split(","):
+        if "line" in part.lower() and "=" in part:
+            try:
+                return float(part.split("=")[1])
+            except (ValueError, IndexError):
+                pass
+    return None
+
+
+def parse_dnb_event(raw: dict) -> Optional[MarketSnapshot]:
+    """Asian Handicap on the level line (0) -> draw-no-bet MarketSnapshot {HOME, AWAY}.
+    Other handicap lines return None (we only trade the level line).
+    """
+    try:
+        st = str(raw.get("SuperOddsType") or "").upper()
+        if "HANDICAP" not in st:
+            return None
+        line = _market_line(raw)
+        if line is None or abs(line) > 1e-9:          # only the level (0) line is draw-no-bet
+            return None
+        names = [str(n).lower() for n in (raw.get("PriceNames") or [])]
+        if "part1" not in names or "part2" not in names:
+            return None
+        prices = dict(zip(names, raw.get("Prices") or []))
+        outcomes = {HOME: float(prices["part1"]) / PRICE_SCALE,
+                    AWAY: float(prices["part2"]) / PRICE_SCALE}
+        if not (outcomes[HOME] and outcomes[AWAY]):
+            return None
+        fixture = str(_first(raw.get("FixtureId"), raw.get("fixtureId")))
+        ts = float(_first(raw.get("Ts"), raw.get("ts"), time.time()))
+        return MarketSnapshot(fixture, DNB_MARKET, ts, outcomes)
     except (TypeError, ValueError, KeyError):
         return None
 
@@ -244,6 +285,17 @@ class TxLineClient:
         d = self._get(f"/api/odds/snapshot/{fixture_id}")
         rows = d.get("odds", d) if isinstance(d, dict) else d
         return [s for s in (parse_odds_event(x) for x in rows) if s]
+
+    def all_markets(self, fixture_id) -> list[MarketSnapshot]:
+        """The 1x2 and draw-no-bet snapshots we trade, from one odds call."""
+        d = self._get(f"/api/odds/snapshot/{fixture_id}")
+        rows = d.get("odds", d) if isinstance(d, dict) else d
+        out = []
+        for x in rows:
+            s = parse_odds_event(x) or parse_dnb_event(x)
+            if s:
+                out.append(s)
+        return out
 
     def scores_snapshot(self, fixture_id) -> list[ScoreUpdate]:
         d = self._get(f"/api/scores/snapshot/{fixture_id}")

@@ -17,8 +17,8 @@ import json
 import time
 
 import chain
-from feed import TxLineClient, to_agent_update, winning_outcome
-from model import model_probs, anchor_to_market, devig, tune_from_market
+from feed import TxLineClient, to_agent_update, winning_outcome, DNB_MARKET
+from model import model_probs, anchor_to_market, devig, tune_from_market, dnb_probs
 from agent import Agent, Position
 
 ORDER = ("HOME", "DRAW", "AWAY")
@@ -157,45 +157,50 @@ def main():
         for f in slate:
             fid = f["fixture"]
             started = (f.get("start") or 0) <= now
-            # --- odds -> decide (pre-match only; in-running odds do not fit a pre-match model) ---
+            neutral = (f.get("competition_id") == 72)
+            # --- odds -> decide across markets (pre-match only) ---
             try:
-                snaps = [] if started else client.odds_snapshot(fid)
+                markets = [] if started else client.all_markets(fid)
             except Exception:
-                snaps = []
-            if snaps:
-                snap = snaps[-1]
+                markets = []
+            if markets:
                 if fid not in models:
-                    models[fid] = model_probs(f["p1"], f["p2"], neutral=(f.get("competition_id") == 72))
-                market_p = devig(snap.outcomes)
-                if args.calibrate and fid not in calibrated:
-                    tune_from_market(f["p1"], f["p2"], market_p, args.learn, persist=True)
-                    models[fid] = model_probs(f["p1"], f["p2"], neutral=(f.get("competition_id") == 72))
+                    models[fid] = model_probs(f["p1"], f["p2"], neutral=neutral)
+                onextwo = next((m for m in markets if m.market == "1x2"), None)
+                if args.calibrate and fid not in calibrated and onextwo:
+                    tune_from_market(f["p1"], f["p2"], devig(onextwo.outcomes), args.learn, persist=True)
+                    models[fid] = model_probs(f["p1"], f["p2"], neutral=neutral)
                     calibrated.add(fid)
-                anchored = anchor_to_market(models[fid], market_p, args.model_weight)
-                decs = agent.process(to_agent_update(snap, anchored))
-                prev = panels.get(fid, {})
-                panel = panel_for(f, anchored, snap.outcomes, decs[0] if decs else None,
-                                  prev.get("phase", "pre-match"), prev.get("score", "0 - 0"))
-                if not decs:   # explain WHY it passed (which gate the best outcome missed)
-                    tail = [l for l in agent.log[-3:] if l["fixture"] == fid]
-                    if tail:
-                        best = max(tail, key=lambda l: l["signal"].get("edge", -9))
-                        why = best["decision"].get("reason", "")
-                        if why:
-                            panel["reason"] = f"closest was {best['signal']['outcome']}: {why}"
-                panels[fid] = panel
-                last_fid = fid
-                for d in decs:
-                    desc = (f"{f['p1']} v {f['p2']}: {d['outcome']} ${d['stake']} @ "
-                            f"{d['decimal']:.2f} (edge {d['edge']:.1%})")
-                    sig = chain.post_memo(f"SharpLine BET | {desc}") if onchain else None
-                    logs.append({"kind": "BET", "desc": desc, "sig": sig})
-                    print("BET    " + desc + (f"  ->  {sig}" if sig else ""))
-                    if args.log:
-                        log_decision(args.log, {"t": snap.ts, "type": "BET", "fixture": fid,
-                                                "outcome": d["outcome"], "stake": d["stake"],
-                                                "odds": d["decimal"], "edge": round(d["edge"], 4),
-                                                "conf": round(d["confidence"], 3), "sig": sig})
+                for snap in markets:
+                    raw_probs = models[fid] if snap.market == "1x2" \
+                        else dnb_probs(f["p1"], f["p2"], neutral=neutral)
+                    anchored = anchor_to_market(raw_probs, devig(snap.outcomes), args.model_weight)
+                    decs = agent.process(to_agent_update(snap, anchored))
+                    if snap.market == "1x2":     # the main panel tracks the 1x2 market
+                        prev = panels.get(fid, {})
+                        panel = panel_for(f, anchored, snap.outcomes, decs[0] if decs else None,
+                                          prev.get("phase", "pre-match"), prev.get("score", "0 - 0"))
+                        if not decs:
+                            tail = [l for l in agent.log[-3:] if l["fixture"] == fid]
+                            if tail:
+                                best = max(tail, key=lambda l: l["signal"].get("edge", -9))
+                                why = best["decision"].get("reason", "")
+                                if why:
+                                    panel["reason"] = f"closest was {best['signal']['outcome']}: {why}"
+                        panels[fid] = panel
+                        last_fid = fid
+                    for d in decs:
+                        desc = (f"{f['p1']} v {f['p2']} [{snap.market}]: {d['outcome']} "
+                                f"${d['stake']} @ {d['decimal']:.2f} (edge {d['edge']:.1%})")
+                        sig = chain.post_memo(f"SharpLine BET | {desc}") if onchain else None
+                        logs.append({"kind": "BET", "desc": desc, "sig": sig})
+                        print("BET    " + desc + (f"  ->  {sig}" if sig else ""))
+                        if args.log:
+                            log_decision(args.log, {"t": snap.ts, "type": "BET", "fixture": fid,
+                                                    "market": snap.market, "outcome": d["outcome"],
+                                                    "stake": d["stake"], "odds": d["decimal"],
+                                                    "edge": round(d["edge"], 4),
+                                                    "conf": round(d["confidence"], 3), "sig": sig})
             # --- scores -> update + settle ---
             try:
                 scores = client.scores_snapshot(fid)
@@ -206,20 +211,31 @@ def main():
                 if fid in panels:
                     panels[fid]["phase"] = sc.phase
                     panels[fid]["score"] = f"{sc.home} - {sc.away}"
-                holding = any(p.fixture == fid for p in agent.positions)
-                if sc.ended and fid not in settled and holding:
-                    result = winning_outcome(sc)
-                    pnl = agent.settle(fid, result)
+                held = [p for p in agent.positions if p.fixture == fid]
+                if sc.ended and fid not in settled and held:
+                    onextwo_win = winning_outcome(sc)
+                    dnb_win = "PUSH" if sc.home == sc.away else ("HOME" if sc.home > sc.away else "AWAY")
+                    winners = {"1x2": onextwo_win, DNB_MARKET: dnb_win}
+                    for pos in held:                      # settle and log each market's result
+                        win = winners.get(pos.market)
+                        if win == "PUSH":
+                            ppnl, tag = 0.0, "PUSH (refund)"
+                        elif pos.outcome == win:
+                            ppnl, tag = round(pos.stake * (pos.decimal - 1), 2), "WON"
+                            wins += 1
+                        else:
+                            ppnl, tag = round(-pos.stake, 2), "lost"
+                            losses += 1
+                        desc = f"{f['p1']} v {f['p2']} [{pos.market}]: {win} · {tag} {ppnl:+.2f}"
+                        sig = chain.post_memo(f"SharpLine SETTLE | {desc}") if onchain else None
+                        logs.append({"kind": "SETTLE", "desc": desc, "sig": sig})
+                        print("SETTLE " + desc + (f"  ->  {sig}" if sig else ""))
+                        if args.log:
+                            log_decision(args.log, {"t": sc.ts, "type": "SETTLE", "fixture": fid,
+                                                    "market": pos.market, "result": win,
+                                                    "pnl": ppnl, "sig": sig})
+                    agent.settle_markets(fid, winners)
                     settled.add(fid)
-                    wins += 1 if pnl > 0 else 0
-                    losses += 1 if pnl <= 0 else 0
-                    desc = f"{f['p1']} v {f['p2']}: {result} · P&L {pnl:+.2f}"
-                    sig = chain.post_memo(f"SharpLine SETTLE | {desc}") if onchain else None
-                    logs.append({"kind": "SETTLE", "desc": desc, "sig": sig})
-                    print("SETTLE " + desc + (f"  ->  {sig}" if sig else ""))
-                    if args.log:
-                        log_decision(args.log, {"t": sc.ts, "type": "SETTLE", "fixture": fid,
-                                                "result": result, "pnl": pnl, "sig": sig})
 
         # spotlight the dashboard on a held position if any, else the last live fixture
         spot = None

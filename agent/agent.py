@@ -92,6 +92,30 @@ class Agent:
         self.realized += pnl
         return round(pnl, 2)
 
+    def settle_markets(self, fixture: str, winners: dict) -> float:
+        """Settle each open position on a fixture against its market's winning outcome.
+        `winners` maps market -> winning outcome (e.g. {"1x2":"HOME","DNB":"HOME"}, or "PUSH")."""
+        pnl = 0.0
+        keep = []
+        for pos in self.positions:
+            if pos.fixture != fixture:
+                keep.append(pos); continue
+            win = winners.get(pos.market)
+            if win is None:
+                keep.append(pos); continue          # market not resolved; leave open
+            if win == "PUSH":                        # draw-no-bet on a draw: refund the stake
+                self.bankroll += pos.stake
+                continue
+            if pos.outcome == win:
+                self.bankroll += pos.stake * pos.decimal
+                pnl += pos.stake * (pos.decimal - 1)
+                self.wins += 1
+            else:
+                pnl -= pos.stake
+        self.positions = keep
+        self.realized += pnl
+        return round(pnl, 2)
+
     def stats(self) -> dict:
         return {
             "bankroll": round(self.bankroll, 2),

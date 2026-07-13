@@ -171,6 +171,7 @@ def main():
                     tune_from_market(f["p1"], f["p2"], devig(onextwo.outcomes), args.learn, persist=True)
                     models[fid] = model_probs(f["p1"], f["p2"], neutral=neutral)
                     calibrated.add(fid)
+                dnb_summary = None
                 for snap in markets:
                     raw_probs = models[fid] if snap.market == "1x2" \
                         else dnb_probs(f["p1"], f["p2"], neutral=neutral)
@@ -189,6 +190,14 @@ def main():
                                     panel["reason"] = f"closest was {best['signal']['outcome']}: {why}"
                         panels[fid] = panel
                         last_fid = fid
+                    elif snap.market == DNB_MARKET:
+                        d0 = decs[0] if decs else None
+                        dnb_summary = {
+                            "odds": {"HOME": round(snap.outcomes.get("HOME", 0), 2),
+                                     "AWAY": round(snap.outcomes.get("AWAY", 0), 2)},
+                            "decision": "BET" if d0 else "PASS",
+                            "out": d0["outcome"] if d0 else None,
+                        }
                     for d in decs:
                         desc = (f"{f['p1']} v {f['p2']} [{snap.market}]: {d['outcome']} "
                                 f"${d['stake']} @ {d['decimal']:.2f} (edge {d['edge']:.1%})")
@@ -201,6 +210,8 @@ def main():
                                                     "stake": d["stake"], "odds": d["decimal"],
                                                     "edge": round(d["edge"], 4),
                                                     "conf": round(d["confidence"], 3), "sig": sig})
+                if dnb_summary and fid in panels:
+                    panels[fid]["dnb"] = dnb_summary
             # --- scores -> update + settle ---
             try:
                 scores = client.scores_snapshot(fid)

@@ -44,7 +44,11 @@
   .match{display:flex;align-items:center;justify-content:space-between;margin-bottom:6px}
   .team{font-size:20px;font-weight:700}
   .score{font-size:34px;font-weight:800}.mono.score{letter-spacing:2px}
-  .meta{display:flex;gap:10px;align-items:center;color:var(--dim);font-size:12.5px;margin-bottom:18px}
+  .meta{display:flex;gap:10px;align-items:center;color:var(--dim);font-size:12.5px;margin-bottom:12px}
+  .dnb{font-size:12.5px;color:var(--dim);margin:0 0 16px;display:flex;align-items:center;gap:10px}
+  .dnb b{color:var(--ink);font-weight:600}
+  .dnb .lbl{font-size:10px;letter-spacing:1px;text-transform:uppercase;color:var(--dimmer);
+    border:1px solid var(--line);border-radius:5px;padding:2px 7px}
   .chip{background:#0b1220;border:1px solid var(--line);border-radius:999px;padding:3px 10px;font-size:11.5px;color:var(--dim)}
   .phase{color:var(--sol2)}
 
@@ -138,6 +142,7 @@
         <span class="phase mono" id="phase">pre-match</span>
         <span id="modeltag" style="margin-left:auto;color:var(--dimmer)">Elo model anchored to market @ 0.30</span>
       </div>
+      <div id="dnb" class="dnb"></div>
       <div id="rows"></div>
       <div class="legend">
         <span><span class="sw" style="background:var(--model)"></span>Model fair value</span>
@@ -241,7 +246,7 @@ function renderWatch(w, activeKey){
 function showIdle(){
   $("livetxt").textContent="IDLE";
   $("home").textContent="—"; $("away").textContent="—"; $("score").textContent="0 - 0";
-  $("phase").textContent="waiting for agent"; $("rows").innerHTML="";
+  $("phase").textContent="waiting for agent"; $("rows").innerHTML=""; $("dnb").innerHTML="";
   setBadge("PASS"); $("outline").innerHTML="agent not running";
   $("reason").innerHTML='click <b>Start agent</b> (top right) to begin trading the live slate';
   renderChecks([]); renderLog([]); renderWatch([]);
@@ -253,6 +258,12 @@ function renderMain(p){   // the fixture + decision (follows the selected card)
     : (ph.startsWith("F") ? "FULL TIME" : (p.decision==="WAIT" ? "WAITING" : "LIVE"));
   $("home").textContent=p.home; $("away").textContent=p.away;
   $("phase").textContent=ph; $("score").textContent=p.score||"0 - 0";
+  const dnbEl=$("dnb");
+  if(p.dnb && p.dnb.odds){
+    const o=p.dnb.odds;
+    const tag = p.dnb.decision==="BET" ? ` <span class="wtag BET">BET ${p.dnb.out}</span>` : "";
+    dnbEl.innerHTML = `<span class="lbl">Draw-no-bet</span> ${p.home} <b>${(o.HOME||0).toFixed(2)}</b> &middot; ${p.away} <b>${(o.AWAY||0).toFixed(2)}</b>${tag}`;
+  } else { dnbEl.innerHTML=""; }
   renderRows(p.model, p.odds);
   if(p.decision==="BET"){ setBadge("BET"); $("outline").innerHTML=`back <b>${p.out}</b>`;
     $("stake").textContent=`$${p.stake} @ ${p.odds_taken}`; }

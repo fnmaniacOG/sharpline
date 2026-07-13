@@ -16,6 +16,7 @@ import argparse
 import json
 import time
 
+import chain
 from feed import TxLineClient, to_agent_update, winning_outcome
 from model import model_probs, anchor_to_market, devig, tune_from_market
 from agent import Agent
@@ -111,8 +112,16 @@ def main():
                        "reason": "re-pricing after restart"})
     wins = losses = 0
 
-    print(f"monitoring the slate ({len(all_fixtures)} fixtures known)\n")
+    onchain = chain.available()
+    print(f"monitoring the slate ({len(all_fixtures)} fixtures known) | "
+          f"on-chain logging: {'ON (devnet memos)' if onchain else 'off (pip install solana to enable)'}\n")
+    REFRESH_EVERY = 15   # re-pull the fixture list every ~15 cycles to catch newly scheduled games
     for it in range(args.max_iters):
+        if it and it % REFRESH_EVERY == 0:      # refresh the schedule so new fixtures appear
+            try:
+                all_fixtures = client.fixtures()
+            except Exception:
+                pass
         now = time.time() * 1000
         slate = [f for f in all_fixtures
                  if now - WINDOW_BEFORE_MS <= (f.get("start") or 0) <= now + WINDOW_AFTER_MS]
@@ -121,9 +130,10 @@ def main():
 
         for f in slate:
             fid = f["fixture"]
-            # --- odds -> decide ---
+            started = (f.get("start") or 0) <= now
+            # --- odds -> decide (pre-match only; in-running odds do not fit a pre-match model) ---
             try:
-                snaps = client.odds_snapshot(fid)
+                snaps = [] if started else client.odds_snapshot(fid)
             except Exception:
                 snaps = []
             if snaps:
@@ -152,13 +162,14 @@ def main():
                 for d in decs:
                     desc = (f"{f['p1']} v {f['p2']}: {d['outcome']} ${d['stake']} @ "
                             f"{d['decimal']:.2f} (edge {d['edge']:.1%})")
-                    logs.append({"kind": "BET", "desc": desc})
-                    print("BET    " + desc)
+                    sig = chain.post_memo(f"SharpLine BET | {desc}") if onchain else None
+                    logs.append({"kind": "BET", "desc": desc, "sig": sig})
+                    print("BET    " + desc + (f"  ->  {sig}" if sig else ""))
                     if args.log:
                         log_decision(args.log, {"t": snap.ts, "type": "BET", "fixture": fid,
                                                 "outcome": d["outcome"], "stake": d["stake"],
                                                 "odds": d["decimal"], "edge": round(d["edge"], 4),
-                                                "conf": round(d["confidence"], 3)})
+                                                "conf": round(d["confidence"], 3), "sig": sig})
             # --- scores -> update + settle ---
             try:
                 scores = client.scores_snapshot(fid)
@@ -177,11 +188,12 @@ def main():
                     wins += 1 if pnl > 0 else 0
                     losses += 1 if pnl <= 0 else 0
                     desc = f"{f['p1']} v {f['p2']}: {result} · P&L {pnl:+.2f}"
-                    logs.append({"kind": "SETTLE", "desc": desc})
-                    print("SETTLE " + desc)
+                    sig = chain.post_memo(f"SharpLine SETTLE | {desc}") if onchain else None
+                    logs.append({"kind": "SETTLE", "desc": desc, "sig": sig})
+                    print("SETTLE " + desc + (f"  ->  {sig}" if sig else ""))
                     if args.log:
                         log_decision(args.log, {"t": sc.ts, "type": "SETTLE", "fixture": fid,
-                                                "result": result, "pnl": pnl})
+                                                "result": result, "pnl": pnl, "sig": sig})
 
         # spotlight the dashboard on a held position if any, else the last live fixture
         spot = None

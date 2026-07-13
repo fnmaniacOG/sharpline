@@ -13,6 +13,7 @@ agent/decisions.jsonl
 # dashboard runtime state
 dashboard/state.json
 dashboard/panels_cache.json
+dashboard/session.json
 
 # macOS
 .DS_Store

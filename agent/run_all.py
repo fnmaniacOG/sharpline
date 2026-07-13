@@ -19,7 +19,7 @@ import time
 import chain
 from feed import TxLineClient, to_agent_update, winning_outcome
 from model import model_probs, anchor_to_market, devig, tune_from_market
-from agent import Agent
+from agent import Agent, Position
 
 ORDER = ("HOME", "DRAW", "AWAY")
 WINDOW_BEFORE_MS = 3 * 3600 * 1000      # include fixtures started up to 3h ago
@@ -37,7 +37,34 @@ def rel_when(start, now) -> str:
     return f"in {int(round(h))}h"
 
 
-CACHE = "dashboard/panels_cache.json"   # last-known per-fixture panels (survives restarts)
+CACHE = "dashboard/panels_cache.json"     # last-known per-fixture panels (survives restarts)
+SESSION = "dashboard/session.json"        # full trading session (bankroll, positions, trade log)
+
+
+def load_session(agent) -> tuple:
+    """Restore a prior session into `agent`. Returns (wins, losses, settled, logs)."""
+    try:
+        with open(SESSION) as f:
+            s = json.load(f)
+    except (OSError, ValueError):
+        return 0, 0, set(), []
+    agent.bankroll = s.get("bankroll", agent.bankroll)
+    agent.realized = s.get("realized", 0.0)
+    agent.bets = s.get("bets", 0)
+    agent.wins = s.get("wins", 0)
+    agent.positions = [Position(**p) for p in s.get("positions", [])]
+    return s.get("wins", 0), s.get("losses", 0), set(s.get("settled", [])), s.get("logs", [])
+
+
+def save_session(agent, wins, losses, settled, logs) -> None:
+    try:
+        with open(SESSION, "w") as f:
+            json.dump({"bankroll": round(agent.bankroll, 2), "realized": round(agent.realized, 2),
+                       "bets": agent.bets, "wins": wins, "losses": losses,
+                       "positions": [vars(p) for p in agent.positions],
+                       "settled": list(settled), "logs": logs[-80:]}, f)
+    except OSError:
+        pass
 
 
 def load_panels() -> dict:
@@ -83,7 +110,7 @@ def panel_for(fx, anchored, odds, decision, phase="pre-match", score="0 - 0") ->
 def write_state(path, panel, agent, wins, losses, logs, watch):
     st = agent.stats()
     state = {**panel, "bankroll": st["bankroll"], "pnl": st["realizedPnL"],
-             "record": f"{wins}-{losses}", "logs": logs[-6:], "watch": watch[:10]}
+             "record": f"{wins}-{losses}", "logs": logs[-14:], "watch": watch[:10]}
     with open(path, "w") as f:
         json.dump(state, f)
 
@@ -104,13 +131,12 @@ def main():
     agent = Agent(bankroll=args.bankroll)
     all_fixtures = client.fixtures()
 
-    models, calibrated, settled = {}, set(), set()
-    panels, logs = load_panels(), []          # restore last-known slate so restarts don't blank it
-    for _p in panels.values():                # a fresh agent holds nothing yet; neutralize stale bets
-        if _p.get("decision") == "BET":
-            _p.update({"decision": "PASS", "out": None, "stake": "—", "odds_taken": None,
-                       "reason": "re-pricing after restart"})
-    wins = losses = 0
+    models, calibrated = {}, set()
+    panels = load_panels()                              # last-known slate (survives restarts)
+    wins, losses, settled, logs = load_session(agent)   # continue the same trading session
+    if logs:
+        print(f"resumed session: bankroll ${agent.stats()['bankroll']}, "
+              f"{agent.stats()['bets']} bets, {len(agent.positions)} open, record {wins}-{losses}")
 
     onchain = chain.available()
     print(f"monitoring the slate ({len(all_fixtures)} fixtures known) | "
@@ -217,7 +243,8 @@ def main():
                               "stake": "—", "odds_taken": None,
                               "reason": "waiting for the market to price this fixture", "checks": []})
         agent.log = agent.log[-300:]   # bound memory over long runs
-        save_panels(panels)   # remember the slate for the next run
+        save_panels(panels)                              # remember the slate
+        save_session(agent, wins, losses, settled, logs)  # persist the trading session
         if args.dashboard and (spot or watch):
             write_state(args.dashboard, spot or {"home": "—", "away": "—", "phase": "scanning",
                         "score": "0 - 0", "model": None, "odds": None, "decision": "PASS",

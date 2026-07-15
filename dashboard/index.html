@@ -100,6 +100,7 @@
   .kind.BET{color:#04140f;background:var(--bet)} .kind.SETTLE{color:#fff;background:var(--sol)}
   .sig{color:var(--accent);text-decoration:none;font-size:12px}
   .sig:hover{text-decoration:underline}
+  .memo{color:var(--dimmer);font-size:12px}   /* not posted: plainly non-clickable */
   .logrow .desc{color:var(--dim)}
   .foot{margin-top:14px;color:var(--dimmer);font-size:11.5px;display:flex;align-items:center;gap:8px}
   .solmark{color:var(--sol2);font-weight:700}
@@ -212,8 +213,8 @@ function renderChecks(checks){ $("checks").innerHTML=(checks||[]).map(c=>`<span 
 function renderLog(logs){
   $("logfeed").innerHTML = (logs||[]).slice().reverse().slice(0,14).map(l=>{
     const sig = l.sig
-      ? `<a class="sig mono" href="https://explorer.solana.com/tx/${l.sig}?cluster=devnet" target="_blank">${l.sig.slice(0,8)}… &uarr;</a>`
-      : `<span class="sig mono" style="color:var(--sol2)">signed memo &rarr; devnet</span>`;
+      ? `<a class="sig mono" href="https://explorer.solana.com/tx/${l.sig}?cluster=devnet" target="_blank" rel="noopener">${l.sig.slice(0,8)}…${l.sig.slice(-4)} &uarr; devnet</a>`
+      : `<span class="memo mono">on-chain logging off</span>`;
     return `<div class="logrow"><span class="kind ${l.kind}">${l.kind}</span>
       <span class="desc">${l.desc}</span>${sig}</div>`;
   }).join("") || `<div class="logrow"><span class="desc" style="color:var(--dimmer)">no decisions posted yet</span></div>`;

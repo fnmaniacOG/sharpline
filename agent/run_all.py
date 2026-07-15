@@ -152,7 +152,7 @@ def main():
 
     onchain = chain.available()
     print(f"monitoring the slate ({len(all_fixtures)} fixtures known) | "
-          f"on-chain logging: {'ON (devnet memos)' if onchain else 'off (pip install solana to enable)'}\n")
+          f"on-chain logging: {chain.status()}\n")
     REFRESH_EVERY = 15   # re-pull the fixture list every ~15 cycles to catch newly scheduled games
     for it in range(args.max_iters):
         if it and it % REFRESH_EVERY == 0:      # refresh the schedule so new fixtures appear

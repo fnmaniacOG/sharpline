@@ -41,6 +41,18 @@ def available() -> bool:
         return False
 
 
+def status() -> str:
+    """Human-readable reason on-chain posting is on or off."""
+    try:
+        import solana  # noqa: F401
+        import solders  # noqa: F401
+    except Exception as e:
+        return f"off (run: python3 -m pip install solana  |  {type(e).__name__})"
+    if not os.path.exists(WALLET):
+        return "off (wallet.json not found next to the agent)"
+    return "ON (devnet memos)"
+
+
 def post_memo(text: str) -> Optional[str]:
     """Post `text` as a devnet memo. Returns the transaction signature, or None on failure."""
     try:
@@ -66,7 +78,11 @@ def post_memo(text: str) -> Optional[str]:
 
 if __name__ == "__main__":
     print("solana available:", available())
+    print("status:", status())
     sig = post_memo("sharpline:test memo")
     if sig:
-        print("posted:", sig)
+        print("POSTED:", sig)
         print(f"https://explorer.solana.com/tx/{sig}?cluster=devnet")
+    else:
+        print("NOT posted. Fix per the skip reason above (install solana, or fund wallet.json "
+              "on devnet: solana airdrop 1 $(solana address -k wallet.json) --url devnet).")

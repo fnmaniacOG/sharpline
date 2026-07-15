@@ -19,7 +19,10 @@ import time
 import chain
 from feed import TxLineClient, to_agent_update, winning_outcome, DNB_MARKET
 from model import model_probs, anchor_to_market, devig, tune_from_market, dnb_probs
+from ratings import learn_from_results
 from agent import Agent, Position
+
+SEED_GAMES = 20   # ratings start seeded from the 20 group-stage results (backfill_elo.py)
 
 ORDER = ("HOME", "DRAW", "AWAY")
 WINDOW_BEFORE_MS = 3 * 3600 * 1000      # include fixtures started up to 3h ago
@@ -41,28 +44,32 @@ CACHE = "dashboard/panels_cache.json"     # last-known per-fixture panels (survi
 SESSION = "dashboard/session.json"        # full trading session (bankroll, positions, trade log)
 
 
-def load_session(agent) -> tuple:
-    """Restore a prior session into `agent`. Returns (wins, losses, settled, logs)."""
+def load_session(agent) -> dict:
+    """Restore a prior session into `agent`. Returns the session bookkeeping dict."""
     try:
         with open(SESSION) as f:
             s = json.load(f)
     except (OSError, ValueError):
-        return 0, 0, set(), []
+        s = {}
     agent.bankroll = s.get("bankroll", agent.bankroll)
     agent.realized = s.get("realized", 0.0)
     agent.bets = s.get("bets", 0)
     agent.wins = s.get("wins", 0)
     agent.positions = [Position(**p) for p in s.get("positions", [])]
-    return s.get("wins", 0), s.get("losses", 0), set(s.get("settled", [])), s.get("logs", [])
+    return {"wins": s.get("wins", 0), "losses": s.get("losses", 0),
+            "settled": set(s.get("settled", [])), "logs": s.get("logs", []),
+            "learned": set(s.get("learned", [])),
+            "games_learned": s.get("games_learned", SEED_GAMES)}
 
 
-def save_session(agent, wins, losses, settled, logs) -> None:
+def save_session(agent, ss, logs) -> None:
     try:
         with open(SESSION, "w") as f:
             json.dump({"bankroll": round(agent.bankroll, 2), "realized": round(agent.realized, 2),
-                       "bets": agent.bets, "wins": wins, "losses": losses,
+                       "bets": agent.bets, "wins": ss["wins"], "losses": ss["losses"],
                        "positions": [vars(p) for p in agent.positions],
-                       "settled": list(settled), "logs": logs[-80:]}, f)
+                       "settled": list(ss["settled"]), "learned": list(ss["learned"]),
+                       "games_learned": ss["games_learned"], "logs": logs[-80:]}, f)
     except OSError:
         pass
 
@@ -107,10 +114,11 @@ def panel_for(fx, anchored, odds, decision, phase="pre-match", score="0 - 0") ->
     }
 
 
-def write_state(path, panel, agent, wins, losses, logs, watch):
+def write_state(path, panel, agent, wins, losses, logs, watch, games_learned):
     st = agent.stats()
     state = {**panel, "bankroll": st["bankroll"], "pnl": st["realizedPnL"],
-             "record": f"{wins}-{losses}", "logs": logs[-14:], "watch": watch[:10]}
+             "record": f"{wins}-{losses}", "logs": logs[-14:], "watch": watch[:10],
+             "games_learned": games_learned}
     with open(path, "w") as f:
         json.dump(state, f)
 
@@ -133,10 +141,14 @@ def main():
 
     models, calibrated = {}, set()
     panels = load_panels()                              # last-known slate (survives restarts)
-    wins, losses, settled, logs = load_session(agent)   # continue the same trading session
+    ss = load_session(agent)                            # continue the same trading session
+    wins, losses = ss["wins"], ss["losses"]
+    settled, learned, logs = ss["settled"], ss["learned"], ss["logs"]
+    games_learned = ss["games_learned"]
     if logs:
         print(f"resumed session: bankroll ${agent.stats()['bankroll']}, "
-              f"{agent.stats()['bets']} bets, {len(agent.positions)} open, record {wins}-{losses}")
+              f"{agent.stats()['bets']} bets, {len(agent.positions)} open, "
+              f"record {wins}-{losses}, learned from {games_learned} games")
 
     onchain = chain.available()
     print(f"monitoring the slate ({len(all_fixtures)} fixtures known) | "
@@ -222,6 +234,14 @@ def main():
                 if fid in panels:
                     panels[fid]["phase"] = sc.phase
                     panels[fid]["score"] = f"{sc.home} - {sc.away}"
+                # learn the ratings from the actual result (once per finished game)
+                if sc.ended and fid not in learned:
+                    learn_from_results([(f["p1"], f["p2"], sc.home, sc.away)], persist=True)
+                    models.clear()                 # re-price every fixture with the updated ratings
+                    learned.add(fid)
+                    games_learned += 1
+                    print(f"LEARNED {f['p1']} {sc.home}-{sc.away} {f['p2']} "
+                          f"(ratings now from {games_learned} games)")
                 held = [p for p in agent.positions if p.fixture == fid]
                 if sc.ended and fid not in settled and held:
                     onextwo_win = winning_outcome(sc)
@@ -271,13 +291,14 @@ def main():
                               "reason": "waiting for the market to price this fixture", "checks": []})
         agent.log = agent.log[-300:]   # bound memory over long runs
         save_panels(panels)                              # remember the slate
-        save_session(agent, wins, losses, settled, logs)  # persist the trading session
+        ss.update(wins=wins, losses=losses, games_learned=games_learned)  # settled/learned shared refs
+        save_session(agent, ss, logs)                    # persist the trading session
         if args.dashboard and (spot or watch):
             write_state(args.dashboard, spot or {"home": "—", "away": "—", "phase": "scanning",
                         "score": "0 - 0", "model": None, "odds": None, "decision": "PASS",
                         "out": None, "stake": "—", "odds_taken": None,
                         "reason": "waiting for the first priced line", "checks": []},
-                        agent, wins, losses, logs, watch)
+                        agent, wins, losses, logs, watch, games_learned)
 
         st = agent.stats()
         print(f"[{it}] bankroll ${st['bankroll']} · P&L {st['realizedPnL']:+.2f} · "

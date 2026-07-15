@@ -125,7 +125,7 @@
     </div>
     <div class="tag">Autonomous World Cup trading agent &middot; TxLINE feed &middot; Solana devnet</div>
     <button id="ctl" class="ctl">Start agent</button>
-    <div class="live" style="margin-left:14px"><span class="dot"></span> <span id="livetxt">IDLE</span> &middot; ratings learned from 20 games</div>
+    <div class="live" style="margin-left:14px"><span class="dot"></span> <span id="livetxt">IDLE</span> &middot; ratings learned from <span id="learned">20</span> games</div>
   </header>
 
   <div class="grid">
@@ -280,6 +280,7 @@ function renderStats(s){   // portfolio totals (same regardless of which card is
   $("pnl").textContent=(p>=0?"+$":"-$")+Math.abs(p).toFixed(2);
   $("pnl").className="v mono "+(p>=0?"pos":"neg");
   if(s.record) $("record").textContent=s.record;
+  if(s.games_learned!=null) $("learned").textContent=s.games_learned;
 }
 
 function renderLive(s){

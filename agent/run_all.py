@@ -18,9 +18,53 @@ import time
 
 import chain
 from feed import TxLineClient, to_agent_update, winning_outcome, DNB_MARKET
-from model import model_probs, anchor_to_market, devig, tune_from_market, dnb_probs
+from model import model_probs, anchor_to_market, devig, tune_from_market, dnb_probs, _canon
 from ratings import learn_from_results, games_learned_count
 from agent import Agent, Position
+from backfill_elo import ALL_RESULTS
+
+# index of every known final result, so positions on games that rotated out of the feed
+# can still be settled (home_goals, away_goals) keyed by canonical (home, away).
+KNOWN_RESULTS = {(_canon(h), _canon(a)): (gh, ga) for h, a, gh, ga in ALL_RESULTS}
+
+
+def known_result(home, away):
+    ch, ca = _canon(home or ""), _canon(away or "")
+    if (ch, ca) in KNOWN_RESULTS:
+        return KNOWN_RESULTS[(ch, ca)]
+    if (ca, ch) in KNOWN_RESULTS:
+        away_g, home_g = KNOWN_RESULTS[(ca, ch)]   # stored reversed; re-orient to (home, away)
+        return (home_g, away_g)
+    return None
+
+
+def winners_from_score(gh, ga) -> dict:
+    return {"1x2": "HOME" if gh > ga else ("AWAY" if ga > gh else "DRAW"),
+            DNB_MARKET: "PUSH" if gh == ga else ("HOME" if gh > ga else "AWAY")}
+
+
+def settle_fixture(agent, fid, home, away, winners, logs, onchain, log_path) -> tuple:
+    """Settle every open position on a fixture, log each, post on-chain. Returns (wins, losses)."""
+    w = l = 0
+    for pos in [p for p in agent.positions if p.fixture == fid]:
+        win = winners.get(pos.market)
+        if win == "PUSH":
+            ppnl, tag = 0.0, "PUSH (refund)"
+        elif pos.outcome == win:
+            ppnl, tag = round(pos.stake * (pos.decimal - 1), 2), "WON"
+            w += 1
+        else:
+            ppnl, tag = round(-pos.stake, 2), "lost"
+            l += 1
+        desc = f"{home} v {away} [{pos.market}]: {win} · {tag} {ppnl:+.2f}"
+        sig = chain.post_memo(f"SharpLine SETTLE | {desc}") if onchain else None
+        logs.append({"kind": "SETTLE", "desc": desc, "sig": sig})
+        print("SETTLE " + desc + (f"  ->  {sig}" if sig else ""))
+        if log_path:
+            log_decision(log_path, {"type": "SETTLE", "fixture": fid, "market": pos.market,
+                                    "result": win, "pnl": ppnl, "sig": sig})
+    agent.settle_markets(fid, winners)
+    return w, l
 
 SEED_GAMES = 20   # ratings start seeded from the 20 group-stage results (backfill_elo.py)
 
@@ -242,31 +286,29 @@ def main():
                     games_learned = games_learned_count()   # ledger updated by learn_from_results
                     print(f"LEARNED {f['p1']} {sc.home}-{sc.away} {f['p2']} "
                           f"(ratings now from {games_learned} games)")
-                held = [p for p in agent.positions if p.fixture == fid]
-                if sc.ended and fid not in settled and held:
-                    onextwo_win = winning_outcome(sc)
-                    dnb_win = "PUSH" if sc.home == sc.away else ("HOME" if sc.home > sc.away else "AWAY")
-                    winners = {"1x2": onextwo_win, DNB_MARKET: dnb_win}
-                    for pos in held:                      # settle and log each market's result
-                        win = winners.get(pos.market)
-                        if win == "PUSH":
-                            ppnl, tag = 0.0, "PUSH (refund)"
-                        elif pos.outcome == win:
-                            ppnl, tag = round(pos.stake * (pos.decimal - 1), 2), "WON"
-                            wins += 1
-                        else:
-                            ppnl, tag = round(-pos.stake, 2), "lost"
-                            losses += 1
-                        desc = f"{f['p1']} v {f['p2']} [{pos.market}]: {win} · {tag} {ppnl:+.2f}"
-                        sig = chain.post_memo(f"SharpLine SETTLE | {desc}") if onchain else None
-                        logs.append({"kind": "SETTLE", "desc": desc, "sig": sig})
-                        print("SETTLE " + desc + (f"  ->  {sig}" if sig else ""))
-                        if args.log:
-                            log_decision(args.log, {"t": sc.ts, "type": "SETTLE", "fixture": fid,
-                                                    "market": pos.market, "result": win,
-                                                    "pnl": ppnl, "sig": sig})
-                    agent.settle_markets(fid, winners)
+                if sc.ended and fid not in settled and any(p.fixture == fid for p in agent.positions):
+                    winners = winners_from_score(sc.home, sc.away)
+                    w, l = settle_fixture(agent, fid, f["p1"], f["p2"], winners, logs, onchain, args.log)
+                    wins += w
+                    losses += l
                     settled.add(fid)
+
+        # settle any open position whose result we already know (game left the feed window)
+        for fid in list({p.fixture for p in agent.positions}):
+            if fid in settled:
+                continue
+            panel = panels.get(fid)
+            if not panel:
+                continue
+            res = known_result(panel.get("home"), panel.get("away"))
+            if not res:
+                continue
+            gh, ga = res
+            w, l = settle_fixture(agent, fid, panel.get("home"), panel.get("away"),
+                                  winners_from_score(gh, ga), logs, onchain, args.log)
+            wins += w
+            losses += l
+            settled.add(fid)   # ratings already learned this game via the backfill; settle only
 
         # spotlight the dashboard on a held position if any, else the last live fixture
         spot = None

@@ -14,6 +14,7 @@ agent/decisions.jsonl
 dashboard/state.json
 dashboard/panels_cache.json
 dashboard/session.json
+dashboard/learned_games.json
 
 # macOS
 .DS_Store

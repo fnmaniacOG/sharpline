@@ -10,8 +10,51 @@ and it converges the ratings toward current form, then persists them via model.s
 """
 
 from __future__ import annotations
+import json
+import os
 
 from model import ELO, elo, _canon, save_overrides, DEFAULT_ELO
+
+# a persistent ledger of every game the ratings have learned from (shared by backfill + live)
+LEDGER_PATH = os.path.join(os.path.dirname(__file__), "..", "dashboard", "learned_games.json")
+
+
+def _load_ledger() -> set:
+    try:
+        with open(LEDGER_PATH) as f:
+            return set(json.load(f))
+    except (OSError, ValueError):
+        return set()
+
+
+def game_key(home, away, gh, ga) -> str:
+    return f"{home}|{away}|{gh}-{ga}"
+
+
+def record_games(keys) -> int:
+    """Add game keys to the learned-games ledger (deduped); return the running total."""
+    led = _load_ledger()
+    led.update(keys)
+    try:
+        os.makedirs(os.path.dirname(LEDGER_PATH), exist_ok=True)
+        with open(LEDGER_PATH, "w") as f:
+            json.dump(sorted(led), f)
+    except OSError:
+        pass
+    return len(led)
+
+
+def games_learned_count() -> int:
+    return len(_load_ledger())
+
+
+def reset_ledger() -> None:
+    try:
+        os.makedirs(os.path.dirname(LEDGER_PATH), exist_ok=True)
+        with open(LEDGER_PATH, "w") as f:
+            json.dump([], f)          # overwrite (works even where delete is blocked)
+    except OSError:
+        pass
 
 # World Cup finals weight (World-Football-Elo uses 60 for World Cup matches)
 K_WORLD_CUP = 60.0
@@ -62,6 +105,7 @@ def learn_from_results(results: list[tuple], k: float = K_WORLD_CUP,
         touched.update((kh, ka))
     if persist and touched:
         save_overrides(sorted(touched))
+        record_games([game_key(h, a, gh, ga) for (h, a, gh, ga) in results])
     return {t: (start[t], ELO[t], ELO[t] - start[t]) for t in sorted(touched)}
 
 

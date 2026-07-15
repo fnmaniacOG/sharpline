@@ -19,7 +19,7 @@ import time
 import chain
 from feed import TxLineClient, to_agent_update, winning_outcome, DNB_MARKET
 from model import model_probs, anchor_to_market, devig, tune_from_market, dnb_probs
-from ratings import learn_from_results
+from ratings import learn_from_results, games_learned_count
 from agent import Agent, Position
 
 SEED_GAMES = 20   # ratings start seeded from the 20 group-stage results (backfill_elo.py)
@@ -144,7 +144,7 @@ def main():
     ss = load_session(agent)                            # continue the same trading session
     wins, losses = ss["wins"], ss["losses"]
     settled, learned, logs = ss["settled"], ss["learned"], ss["logs"]
-    games_learned = ss["games_learned"]
+    games_learned = games_learned_count() or SEED_GAMES   # from the shared ledger (backfill + live)
     if logs:
         print(f"resumed session: bankroll ${agent.stats()['bankroll']}, "
               f"{agent.stats()['bets']} bets, {len(agent.positions)} open, "
@@ -239,7 +239,7 @@ def main():
                     learn_from_results([(f["p1"], f["p2"], sc.home, sc.away)], persist=True)
                     models.clear()                 # re-price every fixture with the updated ratings
                     learned.add(fid)
-                    games_learned += 1
+                    games_learned = games_learned_count()   # ledger updated by learn_from_results
                     print(f"LEARNED {f['p1']} {sc.home}-{sc.away} {f['p2']} "
                           f"(ratings now from {games_learned} games)")
                 held = [p for p in agent.positions if p.fixture == fid]

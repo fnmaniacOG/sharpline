@@ -77,8 +77,8 @@ KNOCKOUT_RESULTS = [
     # Quarter-finals
     ("France", "Morocco", 2, 0), ("Spain", "Belgium", 2, 1),
     ("Norway", "England", 1, 2), ("Argentina", "Switzerland", 3, 1),
-    # Semi-final (Spain beat France 2-0)
-    ("Spain", "France", 2, 0),
+    # Semi-finals
+    ("Spain", "France", 2, 0), ("Argentina", "England", 2, 1),
 ]
 
 ALL_RESULTS = GROUP_RESULTS + KNOCKOUT_RESULTS   # 72 group + 29 knockout = 101 games

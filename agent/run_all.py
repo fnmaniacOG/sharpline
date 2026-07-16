@@ -69,7 +69,8 @@ def settle_fixture(agent, fid, home, away, winners, logs, onchain, log_path) -> 
 SEED_GAMES = 20   # ratings start seeded from the 20 group-stage results (backfill_elo.py)
 
 ORDER = ("HOME", "DRAW", "AWAY")
-WINDOW_BEFORE_MS = 3 * 3600 * 1000      # include fixtures started up to 3h ago
+WINDOW_BEFORE_MS = 72 * 3600 * 1000     # include fixtures started up to 3 days ago (so a
+                                        # running/restarted agent still settles recent finals live)
 WINDOW_AFTER_MS = 48 * 3600 * 1000      # and starting within the next two days
 
 

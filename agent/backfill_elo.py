@@ -81,7 +81,13 @@ KNOCKOUT_RESULTS = [
     ("Spain", "France", 2, 0), ("Argentina", "England", 2, 1),
 ]
 
-ALL_RESULTS = GROUP_RESULTS + KNOCKOUT_RESULTS   # 72 group + 29 knockout = 101 games
+ALL_RESULTS = GROUP_RESULTS + KNOCKOUT_RESULTS   # 72 group + 30 knockout = 102 tournament games
+
+# Non-tournament games (friendlies) we still settle open positions for, but that are NOT
+# counted as World Cup results and are not part of the ratings backfill.
+EXTRA_RESULTS = [
+    ("Vietnam", "Myanmar", 4, 0),
+]
 
 
 def txline_finished(competition_id: int = 72) -> list[tuple]:

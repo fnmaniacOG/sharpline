@@ -21,11 +21,11 @@ from feed import TxLineClient, to_agent_update, winning_outcome, DNB_MARKET
 from model import model_probs, anchor_to_market, devig, tune_from_market, dnb_probs, _canon
 from ratings import learn_from_results, games_learned_count
 from agent import Agent, Position
-from backfill_elo import ALL_RESULTS
+from backfill_elo import ALL_RESULTS, EXTRA_RESULTS
 
 # index of every known final result, so positions on games that rotated out of the feed
 # can still be settled (home_goals, away_goals) keyed by canonical (home, away).
-KNOWN_RESULTS = {(_canon(h), _canon(a)): (gh, ga) for h, a, gh, ga in ALL_RESULTS}
+KNOWN_RESULTS = {(_canon(h), _canon(a)): (gh, ga) for h, a, gh, ga in ALL_RESULTS + EXTRA_RESULTS}
 
 
 def known_result(home, away):

@@ -203,14 +203,17 @@ def parse_score_event(raw: dict) -> Optional[ScoreUpdate]:
     try:
         fixture = str(_first(raw.get("FixtureId"), raw.get("fixtureId"), raw.get("fixture")))
         ts = float(_first(raw.get("Ts"), raw.get("ts"), raw.get("Timestamp"), time.time()))
-        sid = _first(raw.get("StatusId"), raw.get("statusId"), raw.get("gameState"))
+        sid = _first(raw.get("StatusId"), raw.get("statusId"))
+        action = str(raw.get("Action") or "").lower()
         if sid is not None and str(sid).isdigit():
             phase = PHASE.get(int(sid), str(sid))
             ended = int(sid) in ENDED_PHASES
-        else:                                   # string GameState like "scheduled"/"finished"
-            gs = str(_first(raw.get("GameState"), "NS"))
-            phase = gs
-            ended = gs.lower() in ("finished", "ended", "complete", "ft")
+        else:                                   # GameState is an unreliable string ("scheduled")
+            phase = str(_first(raw.get("GameState"), "NS"))
+            ended = False
+        # the feed marks the final record with Action "game_finalised" (no StatusId on it)
+        if action in ("game_finalised", "game_finalized", "finalised", "finalized", "full_time"):
+            ended, phase = True, "F"
         score = raw.get("Score") or {}
         home = _goals(score, "Participant1")
         away = _goals(score, "Participant2")
@@ -297,15 +300,30 @@ class TxLineClient:
                 out.append(s)
         return out
 
-    def scores_snapshot(self, fixture_id) -> list[ScoreUpdate]:
-        d = self._get(f"/api/scores/snapshot/{fixture_id}")
-        rows = d.get("scores", d) if isinstance(d, dict) else d
+    @staticmethod
+    def _score_rows(d) -> list[ScoreUpdate]:
+        """Extract score records from any of the response shapes and order by Seq so the
+        final (game_finalised) record is last."""
+        rows = d
+        if isinstance(d, dict):
+            sc = d.get("scores")
+            if isinstance(sc, dict):
+                rows = sc.get("data", [])
+            else:
+                rows = d.get("data", sc if sc is not None else [])
+        if not isinstance(rows, list):
+            rows = []
+        rows = sorted(rows, key=lambda r: r.get("Seq", 0) if isinstance(r, dict) else 0)
         return [s for s in (parse_score_event(x) for x in rows) if s]
 
+    def scores_snapshot(self, fixture_id) -> list[ScoreUpdate]:
+        return self._score_rows(self._get(f"/api/scores/snapshot/{fixture_id}"))
+
+    def scores_updates(self, fixture_id) -> list[ScoreUpdate]:
+        return self._score_rows(self._get(f"/api/scores/updates/{fixture_id}"))
+
     def scores_historical(self, fixture_id) -> list[ScoreUpdate]:
-        d = self._get(f"/api/scores/historical/{fixture_id}")
-        rows = d.get("scores", d) if isinstance(d, dict) else d
-        return [s for s in (parse_score_event(x) for x in rows) if s]
+        return self._score_rows(self._get(f"/api/scores/historical/{fixture_id}"))
 
     # --- live SSE ---
     def _sse(self, path: str) -> Iterator[dict]:

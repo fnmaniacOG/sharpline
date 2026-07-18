@@ -274,25 +274,36 @@ def main():
                 scores = client.scores_snapshot(fid)
             except Exception:
                 scores = []
+            if started and not any(s.ended for s in scores):
+                for getter in (client.scores_updates, client.scores_historical):
+                    try:                      # finished games: snapshot empties; try the others
+                        more = getter(fid)
+                    except Exception:
+                        more = []
+                    if more:
+                        scores = more
+                        if any(s.ended for s in scores):
+                            break
             if scores:
                 sc = scores[-1]
                 if fid in panels:
                     panels[fid]["phase"] = sc.phase
                     panels[fid]["score"] = f"{sc.home} - {sc.away}"
-                # learn the ratings from the actual result (once per finished game)
-                if sc.ended and fid not in learned:
-                    learn_from_results([(f["p1"], f["p2"], sc.home, sc.away)], persist=True)
-                    models.clear()                 # re-price every fixture with the updated ratings
-                    learned.add(fid)
-                    games_learned = games_learned_count()   # ledger updated by learn_from_results
-                    print(f"LEARNED {f['p1']} {sc.home}-{sc.away} {f['p2']} "
-                          f"(ratings now from {games_learned} games)")
-                if sc.ended and fid not in settled and any(p.fixture == fid for p in agent.positions):
-                    winners = winners_from_score(sc.home, sc.away)
-                    w, l = settle_fixture(agent, fid, f["p1"], f["p2"], winners, logs, onchain, args.log)
-                    wins += w
-                    losses += l
-                    settled.add(fid)
+                ended_row = next((s for s in reversed(scores) if s.ended), None)
+                if ended_row:
+                    fh, fa = ended_row.home, ended_row.away
+                    if fid not in learned:     # learn the ratings from the real result
+                        learn_from_results([(f["p1"], f["p2"], fh, fa)], persist=True)
+                        models.clear()
+                        learned.add(fid)
+                        games_learned = games_learned_count()
+                        print(f"LEARNED {f['p1']} {fh}-{fa} {f['p2']} (ratings from {games_learned} games)")
+                    if fid not in settled and any(p.fixture == fid for p in agent.positions):
+                        w, l = settle_fixture(agent, fid, f["p1"], f["p2"],
+                                              winners_from_score(fh, fa), logs, onchain, args.log)
+                        wins += w
+                        losses += l
+                        settled.add(fid)
 
         # settle any open position whose result we already know (game left the feed window)
         for fid in list({p.fixture for p in agent.positions}):

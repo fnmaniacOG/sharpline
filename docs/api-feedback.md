@@ -1,31 +1,31 @@
 # TxLINE API Feedback
 
-Feedback from integrating SharpLine against the TxLINE devnet API and Solana programs. Submitted as part of the hackathon requirement. Overall the feed was clean and the on-chain design is a genuinely novel and useful primitive. Notes below are meant to be constructive.
+Our experience building SharpLine against the TxLINE devnet API and Solana program. Overall the feed is clean and the on-chain design is a genuinely novel primitive we enjoyed building on. Notes below are meant to be constructive, and reflect real things we hit.
 
-## What worked well
+## What we liked most
 
-- The de-vigged `TXLineStablePriceDemargined` book is excellent. Getting a consensus line whose implied probabilities already sum to one, from a single source, removed a whole layer of work and is exactly what a fair-value model wants to compare against.
-- The nested `Score` object with per-phase breakdowns (H1, HT, H2, ET, Total) is rich and unambiguous once understood.
-- The permissionless on-chain subscribe plus API activation flow is a clean idea and worked on devnet once the account setup was right.
-- The SSE streams and the snapshot endpoints share field shapes, so one parser handles both live and replay.
+The de-vigged StablePrice consensus is the standout. Getting a single, margin-free fair line whose implied probabilities already sum to one removed an entire layer of work and is exactly what a fair-value model wants to compare against. It let us focus on the model and the discipline instead of cleaning odds.
 
-## Friction points
+The permissionless access model is elegant. Paying (or, for the World Cup tier, subscribing at zero cost) with an on-chain instruction and then activating an API token is a clean, novel flow, and it worked end to end on devnet.
 
-1. **Two-header auth is easy to miss.** Data calls need both `Authorization: Bearer <guest JWT>` and `X-Api-Token: <apiToken>`. A first integration naturally tries the API token as the bearer and gets a 401 with no hint. A one-line note in the 401 body, or a bold callout at the top of the data examples, would save time.
+The on-chain verifiability is a strong idea. Being able to anchor odds and scores to Merkle roots, and to write our own decisions to the chain as signed memos, made the "auditable trading agent" story real rather than aspirational.
 
-2. **Empty results are ambiguous.** `/api/odds/snapshot/{id}` returns an empty array both when a fixture is unpriced (too far out) and when its market is suspended (in-running). Distinguishing "no coverage yet" from "suspended" without cross-referencing the score phase is hard. A status field on the odds response would help.
+The score payload is rich once understood: nested per-participant, per-phase breakdowns with goals, cards, and corners.
 
-3. **Historical endpoints are hard to discover and bounded.** `/api/odds/historical/{id}` returns 404 (there appears to be no odds analog to `/api/scores/historical/{id}`), and the scores historical window (started between two weeks and six hours ago) is easy to fall outside of without a clear error. For a hackathon where matches finish before judging, a documented way to pull a finished fixture's full odds sequence would be very valuable for replay demos.
+## Where we hit friction
 
-4. **Encoded vs JSON stat representation.** The soccer feed documents stats as `(period * 1000) + key` encodings, but the JSON scores feed uses the nested `Score` object. It took a live probe to learn the encoded form is only for the on-chain Merkle proofs. A sentence clarifying which representation appears where would prevent a wrong first implementation.
+Two-header auth is easy to miss. Data calls need both `Authorization: Bearer <guest JWT>` and `X-Api-Token: <apiToken>`. A natural first attempt puts the API token in the bearer and gets a 401 with no hint. One line in the 401 body, or a bold callout in the data examples, would save time.
 
-5. **Devnet coverage is thin.** At times only one fixture was live, which makes it hard to exercise a multi-fixture agent. More continuous devnet sample data (even synthetic replays on a loop) would improve the developer experience.
+Finished games were the hardest part. Once a match ends, `GET /api/scores/snapshot/{id}` returns empty, and the final record arrives with `Action: "game_finalised"`, `GameState: "scheduled"` (a string), and no `StatusId`. We were keying "ended" off `StatusId`, so we read finished games as not-started and failed to settle them until we saw a raw sample. Documenting the finalization record, the `Action` values, and that `GameState` is not a reliable finished flag would prevent a whole class of bugs.
 
-## Minor
+Devnet exposes only a rotating window of fixtures. Games that finished a few hours earlier drop out of the fixtures list and the snapshot endpoints, so settling or backfilling purely from the API is not possible once a game ages out. We had to widen our lookback and fall back to a verified-results table for older games.
 
-- The Devnet IDL link and the exact free-tier account list (PDAs, treasury vault, token program) would be easier to find grouped on one page. The subscribe instruction's account set was the single hardest thing to get right.
-- The OpenAPI file at `/docs/docs.yaml` is served as binary and was not directly readable through a simple fetch; a rendered reference or a plain-text mirror would help.
+Distinguishing "no coverage" from "no data yet" is hard. For uncovered fixtures (some friendlies) the odds and score endpoints returned empty bodies or JSON-parse errors rather than a clear "not covered" status, which made diagnosis slow.
+
+The OpenAPI file at `/docs/docs.yaml` is served as binary and was awkward to read directly, and the `SuperOddsType` enum values are not enumerated anywhere, so we discovered `1X2_PARTICIPANT_RESULT` and `ASIANHANDICAP_PARTICIPANT_GOALS` empirically. A rendered reference and an enum list would help.
+
+The dual stat representation (the `(period * 1000) + key` encoding versus the nested JSON `Score` object) needed a live sample to disambiguate; a sentence on which appears where would prevent a wrong first implementation.
 
 ## Net
 
-The primitive (verifiable, de-vigged consensus odds anchored on-chain) is strong and worth building on. Most of the friction was documentation discoverability rather than the API itself.
+The core primitive, verifiable de-vigged consensus odds anchored on-chain, is strong and worth building on. Almost all of our friction was documentation discoverability and the finished-game/coverage semantics on devnet, not the API design itself.

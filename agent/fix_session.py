@@ -19,6 +19,7 @@ import json
 import os
 import re
 
+import chain
 from run_all import known_result, winners_from_score
 
 SESSION = os.path.join(os.path.dirname(__file__), "..", "dashboard", "session.json")
@@ -28,6 +29,9 @@ BET_RE = re.compile(r"^(.+?) v (.+?) \[(.+?)\]: ([A-Z]+) \$([\d.]+) @ ([\d.]+)")
 def main():
     with open(SESSION) as f:
         s = json.load(f)
+
+    onchain = chain.available()
+    print(f"on-chain settlement memos: {chain.status()}")
 
     # positions still open (e.g. the final): match them so we do not settle them
     open_sig = {(p["market"], p["outcome"], round(p["stake"], 2), round(p["decimal"], 2))
@@ -65,8 +69,10 @@ def main():
         else:
             pnl, tag = round(-stake, 2), "lost"; losses += 1
         realized += pnl
-        new_logs.append({"kind": "SETTLE", "sig": entry.get("sig"),
-                         "desc": f"{home} v {away} [{market}]: {win} · {tag} {pnl:+.2f}"})
+        desc = f"{home} v {away} [{market}]: {win} · {tag} {pnl:+.2f}"
+        sig = chain.post_memo(f"SharpLine SETTLE | {desc}") if onchain else None   # its OWN tx
+        new_logs.append({"kind": "SETTLE", "sig": sig, "desc": desc})
+        print(f"  settled {desc}" + (f"  ->  {sig}" if sig else "  (not posted)"))
         fixed += 1
 
     s["bankroll"] = round(bankroll, 2)

@@ -290,7 +290,9 @@ def main():
                     panels[fid]["phase"] = sc.phase
                     panels[fid]["score"] = f"{sc.home} - {sc.away}"
                 ended_row = next((s for s in reversed(scores) if s.ended), None)
-                if ended_row:
+                # trust the live feed's score ONLY when we have no verified result for the game
+                # (devnet scores are unreliable; verified results are settled by the pass below)
+                if ended_row and known_result(f["p1"], f["p2"]) is None:
                     fh, fa = ended_row.home, ended_row.away
                     if fid not in learned:     # learn the ratings from the real result
                         learn_from_results([(f["p1"], f["p2"], fh, fa)], persist=True)

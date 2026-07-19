@@ -161,9 +161,10 @@ def panel_for(fx, anchored, odds, decision, phase="pre-match", score="0 - 0") ->
 
 def write_state(path, panel, agent, wins, losses, logs, watch, games_learned):
     st = agent.stats()
+    open_stake = round(sum(p.stake for p in agent.positions), 2)
     state = {**panel, "bankroll": st["bankroll"], "pnl": st["realizedPnL"],
              "record": f"{wins}-{losses}", "logs": logs[-14:], "watch": watch[:10],
-             "games_learned": games_learned}
+             "games_learned": games_learned, "open_stake": open_stake}
     with open(path, "w") as f:
         json.dump(state, f)
 

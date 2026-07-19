@@ -248,7 +248,7 @@ function showIdle(){
   $("livetxt").textContent="IDLE";
   $("home").textContent="—"; $("away").textContent="—"; $("score").textContent="0 - 0";
   $("phase").textContent="waiting for agent"; $("rows").innerHTML=""; $("dnb").innerHTML="";
-  setBadge("PASS"); $("outline").innerHTML="agent not running";
+  setBadge("PASS"); $("outline").innerHTML="agent not running"; $("stake").textContent="—";
   $("reason").innerHTML='click <b>Start agent</b> (top right) to begin trading the live slate';
   renderChecks([]); renderLog([]); renderWatch([]);
 }
@@ -267,10 +267,9 @@ function renderMain(p){   // the fixture + decision (follows the selected card)
     dnbEl.innerHTML = `<span class="lbl">Draw-no-bet</span> ${p.home} <b>${(pr[0]*100).toFixed(1)}%</b> &middot; ${p.away} <b>${(pr[1]*100).toFixed(1)}%</b>${tag}`;
   } else { dnbEl.innerHTML=""; }
   renderRows(p.model, p.odds);
-  if(p.decision==="BET"){ setBadge("BET"); $("outline").innerHTML=`back <b>${p.out}</b>`;
-    $("stake").textContent=`$${p.stake} @ ${p.odds_taken}`; }
-  else if(p.decision==="WAIT"){ setBadge("PASS"); $("outline").innerHTML="waiting for line"; $("stake").textContent="—"; }
-  else { setBadge("PASS"); $("outline").innerHTML="no position"; $("stake").textContent=(p.stake&&p.stake!=="—")?`$${p.stake}`:"—"; }
+  if(p.decision==="BET"){ setBadge("BET"); $("outline").innerHTML=`back <b>${p.out}</b>`; }
+  else if(p.decision==="WAIT"){ setBadge("PASS"); $("outline").innerHTML="waiting for line"; }
+  else { setBadge("PASS"); $("outline").innerHTML="no position"; }
   $("reason").textContent=p.reason||"";
   renderChecks(p.checks||[]);
 }
@@ -282,6 +281,7 @@ function renderStats(s){   // portfolio totals (same regardless of which card is
   $("pnl").className="v mono "+(p>=0?"pos":"neg");
   if(s.record) $("record").textContent=s.record;
   if(s.games_learned!=null) $("learned").textContent=s.games_learned;
+  $("stake").textContent = (s.open_stake && s.open_stake>0) ? ("$"+s.open_stake.toFixed(2)) : "—";
 }
 
 function renderLive(s){

@@ -81,6 +81,8 @@ KNOCKOUT_RESULTS = [
     ("Spain", "France", 2, 0), ("Argentina", "England", 2, 1),
     # Third-place play-off (England beat France 6-4)
     ("England", "France", 6, 4),
+    # Final (Spain beat Argentina 1-0 after extra time; settled on the match winner)
+    ("Spain", "Argentina", 1, 0),
 ]
 
 ALL_RESULTS = GROUP_RESULTS + KNOCKOUT_RESULTS   # 72 group + 30 knockout = 102 tournament games
